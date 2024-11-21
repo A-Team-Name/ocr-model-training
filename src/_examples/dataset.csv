@@ -1,5 +1,5 @@
 FileName,Label
-01.jpg,Hello World!
-02.jpg,Hi there!
-03.jpg,What is the time?
-04.jpg,Where am I?
+01.jpg,({'</',(¯1↑⍵),'l>'}¨⌽type)
+02.jpg,header←{⍵↓⍨3⌊+/∧\' '=⍵}summary⍝
+03.jpg,{⊃⍵↓⍨⍵⍳'-'}⍝
+04.jpg,((≢md)⊃md)←'(</pre>)'⎕R'
