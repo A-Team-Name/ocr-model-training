@@ -1,5 +1,5 @@
-FileName,Label
-01.jpg,({'</',(¯1↑⍵),'l>'}¨⌽type)
-02.jpg,header←{⍵↓⍨3⌊+/∧\' '=⍵}summary⍝
-03.jpg,{⊃⍵↓⍨⍵⍳'-'}⍝
-04.jpg,((≢md)⊃md)←'(</pre>)'⎕R'
+FileName§Label
+01.jpg§({'</',(¯1↑⍵),'l>'}¨⌽type)
+02.jpg§header←{⍵↓⍨3⌊+/∧\' '=⍵}summary⍝
+03.jpg§{⊃⍵↓⍨⍵⍳'-'}⍝
+04.jpg§((≢md)⊃md)←'(</pre>)'⎕R'
