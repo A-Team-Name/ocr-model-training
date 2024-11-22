@@ -1,33 +1,34 @@
-from transformers import VisionEncoderDecoderModel, PreTrainedModel, PretrainedConfig
+from typing import Any
+from transformers import VisionEncoderDecoderModel
+from transformers import TrOCRProcessor
+from transformers import PreTrainedModel
+from transformers import PretrainedConfig
+from transformers import AutoTokenizer
+from transformers import PreTrainedTokenizerBase
+from transformers import AddedToken
+import torch
+from PIL import Image
+from torch.functional import F
 from torch import nn
+from evaluate import load, EvaluationModule
 
-class TrocrApl(nn.Module):
+
+class TrocrApl_Interface(nn.Module):
     
-    model_name: str = "microsoft/trocr-base-handwritten"
-    
-    def __init__(self, num_classes: int):
+    def __init__(self):
         """
-        Initializes the TrOCR model with a custom number of output classes.
+        Initializes the TrOCR model
 
-        Args:
-            num_classes (int): Number of output classes (e.g., unique characters).
         """
-        super(TrocrApl, self).__init__()
+        super(TrocrApl_Interface, self).__init__()
         
-        
-        self.num_classes = num_classes
-        
-        self.model: nn.Module = VisionEncoderDecoderModel.from_pretrained(
-            self.model_name
-        )
-        self.model_config: PretrainedConfig = self.model.config
-        self.model_config.decoder.vocab_size = self.num_classes
-        self.model.decoder.resize_token_embeddings(self.num_classes)
-
-    def forward(self, pixel_values, labels=None):
+    def predict(
+        self,
+        image: Image.Image
+    ) -> str:
         """
-        Forward pass for the model.
-
+        Model prediction
+s
         Args:
             pixel_values (Tensor): Image tensors with shape (batch_size, channels, height, width).
             labels (Tensor, optional): Label tensors with shape (batch_size, sequence_length).
@@ -35,5 +36,179 @@ class TrocrApl(nn.Module):
         Returns:
             dict: Model outputs including loss (if labels are provided) and logits.
         """
-        outputs = self.model(pixel_values=pixel_values, labels=labels)
-        return outputs
+        raise NotImplementedError()
+
+
+class TrocrApl(TrocrApl_Interface):
+    
+    APL_CHARS: list[str | AddedToken]
+    APL_CHARS = list(
+        "∇⋄⍝⍺⍵¨¯×÷←↑→↓∆∊∘∧∨∩∪≠≡≢≤≥⊂⊃⊆⊖⊢⊣⊤⊥⌈⌊⌶⌷⎕⌸⌹⌺⌽⌿⍀⍉⍋⍎⍒⍕⍙⍟⍠⍣⍤⍥⍨⍪⍬⍱⍲⍳⍴⍷⍸○⍬⊇⍛⍢⍫√"
+    )
+    PAD_TOKEN_ID: int = 1
+    PAD_TOKEN_OVERWRITE: int = -100
+    
+    def __init__(
+        self,
+        max_target_length: int,
+        max_token_vector_length: int = 64,
+        early_stopping: bool = True,
+        no_repeat_ngram_size: int = 2,
+        length_penalty: float = 2.0,
+        apl_tokeniser_path: str | None = None
+    ):
+        super(TrocrApl, self).__init__()
+
+        self.max_target_length: int = max_target_length
+        self.apl_tokeniser_path: str | None = apl_tokeniser_path
+        self.max_token_vector_length: int = max_token_vector_length
+        self.early_stopping: bool = early_stopping
+        self.no_repeat_ngram_size: int = no_repeat_ngram_size
+        self.length_penalty: float = length_penalty
+        
+        self.tokeniser: PreTrainedTokenizerBase
+        
+        if self.apl_tokeniser_path is None:
+            
+            self.tokeniser = AutoTokenizer.from_pretrained(
+                "microsoft/trocr-base-printed"
+            )
+
+            self.tokeniser.add_tokens(
+                new_tokens=self.APL_CHARS
+            )
+        else:
+            self.tokeniser = AutoTokenizer.from_pretrained(
+                "./apl_tokeniser"
+            )
+
+        _processor: tuple[TrOCRProcessor, dict[str, Any]] | TrOCRProcessor
+        _processor = TrOCRProcessor.from_pretrained(
+            "microsoft/trocr-base-handwritten"
+        )
+        
+        if isinstance(_processor, tuple):
+            _processor = _processor[0]
+            
+        self.processor: TrOCRProcessor = _processor
+        self.processor.tokenizer = self.tokeniser
+        
+        self.model: PreTrainedModel 
+        self.model = VisionEncoderDecoderModel.from_pretrained(
+            "microsoft/trocr-base-stage1"
+        )
+        
+        self.character_error_rate_metric: EvaluationModule = load("cer")
+        self.model.config.decoder_start_token_id = self.tokeniser.cls_token_id
+        self.model.config.pad_token_id = self.tokeniser.pad_token_id
+        self.model.config.eos_token_id = self.tokeniser.sep_token_id
+        self.model.config.vocab_size = len(self.tokeniser)
+        self.model.decoder.resize_token_embeddings(len(self.tokeniser))
+
+        self.model.config.max_length = self.max_token_vector_length
+        self.model.config.early_stopping = self.early_stopping
+        self.model.config.no_repeat_ngram_size = self.no_repeat_ngram_size
+        self.model.config.length_penalty = self.length_penalty
+        self.model.config.num_beams = 5
+        
+    def forward(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor
+    ):
+        return self.model(
+            pixel_values=x,
+            labels=y
+        )
+        loss: torch.Tensor = outputs.loss
+    
+    def compute_character_error_rate(
+        self,
+        pred_ids: torch.Tensor,
+        label_ids: torch.Tensor
+    ) -> dict[Any, Any] | None:
+        pred_str = self.processor.batch_decode(
+            pred_ids, 
+            skip_special_tokens=True
+        )
+        self.restore_label_padding_value(label_ids)
+        label_str: list[str] = self.processor.batch_decode(
+            label_ids,
+            skip_special_tokens=False
+        )
+
+        cer: dict[Any, Any] | None = self.character_error_rate_metric.compute(
+            predictions=pred_str,
+            references=label_str
+        )
+
+        return cer
+    
+    def restore_label_padding_value(
+        self,
+        label: torch.Tensor,
+        inplace=True
+    ) -> torch.Tensor:
+        
+        if label.shape[-1] < self.max_target_length:
+            pad_amount = self.max_target_length - label.shape[-1]
+            # Pad on the right along the last dimension
+            label = F.pad(
+                label, 
+                (0, pad_amount),
+                value=self.PAD_TOKEN_OVERWRITE
+            )
+        
+        out_label_tensor: torch.Tensor = label
+        
+        if not inplace:
+            out_label_tensor: torch.Tensor 
+            out_label_tensor = label.detach().clone()
+            
+        mask: torch.Tensor = out_label_tensor == self.PAD_TOKEN_OVERWRITE
+        out_label_tensor[mask] = self.PAD_TOKEN_ID
+        
+        return out_label_tensor
+        
+    def overwrite_label_padding(
+        self,
+        label: torch.Tensor,
+        inplace=True    
+    ) -> torch.Tensor:
+        
+        out_label_tensor: torch.Tensor = label
+        
+        if not inplace:
+            out_label_tensor: torch.Tensor 
+            out_label_tensor = label.detach().clone()
+            
+        mask: torch.Tensor = out_label_tensor == self.PAD_TOKEN_ID
+        out_label_tensor[mask] = self.PAD_TOKEN_OVERWRITE
+        
+        return out_label_tensor
+    
+    def decode_raw_model_output(
+        self,
+        label: torch.Tensor
+    ) -> list[str]:
+        
+        _restored_label: torch.Tensor
+        _restored_label = self.restore_label_padding_value(
+            label,
+            inplace=False
+        )
+        
+        if len(_restored_label.shape) == 1:
+            _restored_label = _restored_label.unsqueeze(0)
+        
+        strings: list[str] = []
+        
+        label_tensor: torch.Tensor
+        for label_tensor in _restored_label:
+            label_str: str = self.processor.decode(
+                label_tensor, 
+                skip_special_tokens=True
+            )
+            strings.append(label_str)
+        
+        return strings
