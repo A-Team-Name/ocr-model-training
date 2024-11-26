@@ -2,6 +2,7 @@
 
 dataset/
 model_checkpoints/
+logs/
 
 #model checkpoint
 *.safetensors
