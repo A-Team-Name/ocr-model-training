@@ -1,6 +1,11 @@
+<<<<<<< HEAD
 # Dataset
 
 dataset/
+=======
+#model checkpoint
+*.safetensors
+>>>>>>> e2294c18702d1c3f09b770a5fd8ca82e69dd279f
 
 
 # Byte-compiled / optimized / DLL files
