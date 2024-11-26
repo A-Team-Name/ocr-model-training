@@ -1,167 +1,126 @@
 from torch.utils.data import Dataset
-from torch import Tensor, tensor
-from torch import zeros as torch_zeros
-from torch import dtype as torch_dtype
-from torch import float32 as torch_float32
+from transformers import TrOCRProcessor
+from transformers import VisionEncoderDecoderModel
+import torch
+from PIL import Image
 from numpy import ndarray
+import os
 
-class AbstractHandwrittenLineOfCodeDataset(Dataset):
-    
+class HandwrittenTextDataset(Dataset):
     def __init__(
         self, 
-        dtype: torch_dtype = torch_float32
+        dataset_dirpath: str, 
+        filenames: list[str], 
+        label_strings: list[str],
+        processor: TrOCRProcessor, 
+        max_target_length: int = 128,
+        pad_token_overwrite: int = -100
     ):
-        self.dtype: torch_dtype = dtype
-    
-    @staticmethod
-    def normalise_tensor(
-        input_tensor: Tensor
-    ) -> Tensor:
-        image_min_pixel: float = input_tensor.min().item()
-        image_max_pixel: float = input_tensor.max().item()
-        return (input_tensor - image_min_pixel) / (image_max_pixel - image_min_pixel)
+        assert len(label_strings) == len(filenames)
         
-    def get_text_image(
+        self.dataset_dirpath: str = dataset_dirpath
+        self.filenames: list[str] = filenames
+        self.filepaths: list[str] = [
+            os.path.join(
+                dataset_dirpath,
+                filename
+            ) for filename in filenames
+        ]  
+        self.label_strings: list[str] = label_strings
+        self.processor: TrOCRProcessor = processor
+        self.max_target_length: int = max_target_length
+        self.pad_token_overwrite: int = pad_token_overwrite
+        self.pad_token_id: int = self.processor.tokenizer.pad_token_id
+    
+    
+    def restore_label_padding(
         self,
-        text: str, 
-    ) -> Tensor:
-        raise NotImplementedError()
-
-    def tokenise_label(
+        label: torch.Tensor,
+        inplace=True    
+    ) -> torch.Tensor:
+        
+        out_label_tensor: torch.Tensor = label
+        
+        if not inplace:
+            out_label_tensor: torch.Tensor 
+            out_label_tensor = label.detach().clone()
+            
+        mask: torch.Tensor = out_label_tensor == self.pad_token_overwrite  
+        out_label_tensor[mask] = self.pad_token_id
+        
+        return out_label_tensor
+        
+    def overwrite_label_padding(
         self,
-        text: str
-    ) -> Tensor:
-        raise NotImplementedError()
+        label: torch.Tensor,
+        inplace=True    
+    ) -> torch.Tensor:
+        
+        out_label_tensor: torch.Tensor = label
+        
+        if not inplace:
+            out_label_tensor: torch.Tensor 
+            out_label_tensor = label.detach().clone()
+            
+        mask: torch.Tensor = out_label_tensor == self.pad_token_id
+        out_label_tensor[mask] = self.pad_token_overwrite
+        
+        return out_label_tensor
+    
+    
+    def encode_label(
+        self,
+        label_string: str
+    ) -> torch.Tensor:
+        labels_tensor: torch.Tensor = torch.tensor(
+            self.processor.tokenizer(
+                label_string, 
+                padding="max_length", 
+                max_length=self.max_target_length
+            ).input_ids
+        )
+        
+        self.overwrite_label_padding(
+            label=labels_tensor,
+            inplace=True
+        )
+        
+        return labels_tensor
+        
+    def decode_label(
+        self, 
+        tokenised_label: torch.Tensor
+    ) -> str:
+        _restored_label: torch.Tensor = self.restore_label_padding(
+            tokenised_label, 
+            inplace=False
+        )
+        label_str = self.processor.decode(
+            _restored_label, 
+            skip_special_tokens=True
+        )
+        return label_str
     
     def __len__(self) -> int:
-        raise NotImplementedError()
-    
-    def __getitem__(
-        self, 
-        index: int
-    ) -> Tensor:
-        raise NotImplementedError()
-        
-        
-class HandwrittenLineOfCodeDataset(AbstractHandwrittenLineOfCodeDataset):
-    
-    def __init__(
-        self, 
-        dataset_line_text: list[str],
-        unicode_character_filepath_map: dict[str, list[str]],
-        eol_char: str,
-        dtype: torch_dtype = torch_float32
-    ):
-        """Initialise the handwritten line of code dataset.
+        return len(self.filenames)
 
-        Args:
-            dataset_line_text (list[str]): list of all lines of code (doesn't need to have a EOL symbol here)
-            unicode_character_filepath_map (dict[str, list[str]]): dict of a unique identifier for each unicode symbol and a list of all files to the images of those symbol images.
-            eol_char str: end of line unique identifier.
-            dtype (torch_dtype, optional): _description_. Defaults to torch_float32.
-        """
-        
-        super(HandwrittenLineOfCodeDataset, self).__init__(
-            dtype
-        )
-        
-        self.dataset_line_text: list[str] = dataset_line_text
-        
-        self.unicode_character_filepath_map: dict[str, list[str]] 
-        self.unicode_character_filepath_map = unicode_character_filepath_map
-        
-        _unicode_symbols: list[str] = list(
-            unicode_character_filepath_map.keys()
-        )
-        _unicode_symbols.append(eol_char)
-        self.unicode_symbols: list[str] = sorted( _unicode_symbols)
-        
-        self.number_of_unicode_symbols: int = len(self.unicode_symbols)
-        
-        self.unicode_symbols_index_map: dict[str, int] = {
-            symbol: self.unicode_symbols.index(symbol)
-            for symbol in self.unicode_symbols
-        }
-        
-        self.eol_char: str = eol_char
-        self.dtype: torch_dtype = dtype
-    
-    def get_text_image(
-        self,
-        text: str, 
-    ) -> Tensor:
-        raise NotImplementedError()
-    
-    def encode_unicode_char(
-        self,
-        unicode: str,
-    ) -> Tensor:
-        
-        if unicode not in self.unicode_symbols_index_map.keys():
-            raise KeyError(
-                f"Unicode symbol '{unicode}' not found in dataset"
-            )
-        
-        unicode_index: int = self.unicode_symbols_index_map[unicode]
-        
-        unicode_one_hot: Tensor = torch_zeros(
-            self.number_of_unicode_symbols
-        )
-        unicode_one_hot[unicode_index] = 1
-        
-        return unicode_one_hot.to(
-            dtype=self.dtype
-        )
-    
-    def encode_unicode_string(
-        self, 
-        string: str
-    ) -> Tensor:
-        encoded_tensor = torch_zeros(
-            len(string), 
-            self.number_of_unicode_symbols, 
-            dtype=self.dtype
-        )
-        for idx, char in enumerate(string):
-            encoded_tensor[
-                idx, 
-                self.unicode_symbols_index_map[char]
-            ] = 1
-        return encoded_tensor
-    
-    def tokenise_label(
-        self,
-        text: str
-    ) -> Tensor:
-        return self.encode_unicode_string(text)
-    
-    def __len__(self) -> int:
-        return len(self.dataset_line_text)
-    
     def __getitem__(
-        self, 
+        self,
         index: int
-    ) -> tuple[Tensor, Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+     
+        filepath: str = self.filepaths[index]
+        text_label: str = self.label_strings[index]
         
-        line_text: str = self.dataset_line_text[index]
+        text_image: Image.Image = Image.open(filepath).convert("RGB")
+        text_image_tensor: torch.Tensor = self.processor(
+            text_image, 
+            return_tensors="pt"
+        ).pixel_values
         
-        if line_text[-1] != self.eol_char:
-            line_text = f"{line_text}{self.eol_char}"
-        
-        text_image: Tensor = self.get_text_image(
-            line_text
+        labels_tensor: torch.Tensor = self.encode_label(
+            text_label
         )
+
+        return text_image_tensor.squeeze(), labels_tensor
         
-        text_image = text_image.permute(2, 0, 1) # [w, h, c] -> [c, w, h]
-        
-        text_image_tensor = self.normalise_tensor(
-            text_image_tensor
-        )
-        
-        text_label_tensor: Tensor = self.tokenise_label(
-            string=line_text,
-            dtype=self.dtype
-        )
-        
-        return text_image_tensor, text_label_tensor
-    
