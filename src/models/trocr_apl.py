@@ -124,22 +124,29 @@ class TrocrApl(Trocr_Interface):
         y_ids: torch.Tensor
     ) -> dict[Any, Any] | None:
         
-        y_hat_ids_padded: torch.Tensor = self.add_label_padding(
+        y_hat_ids_padded: torch.Tensor = self.pad_label(
             y_hat_ids,
-            inplace=False
+            self.PAD_TOKEN_OVERWRITE
         )
-        y_ids_padded: torch.Tensor = self.add_label_padding(
+        y_ids_padded: torch.Tensor = self.pad_label(
             y_ids,
-            inplace=False
+            self.PAD_TOKEN_OVERWRITE
         )
         
+        y_mask: torch.Tensor = y_ids_padded == self.PAD_TOKEN_OVERWRITE
+        y_ids_padded_fix = torch.where(y_mask, self.PAD_TOKEN_ID, y_ids_padded)
+        
+        y_hat_mask: torch.Tensor = y_hat_ids_padded == self.PAD_TOKEN_OVERWRITE
+        y_hat_ids_padded_fix = torch.where(y_hat_mask, self.PAD_TOKEN_ID, y_hat_ids_padded)
+        
+        
         y_hat_str: str | list[str] = self.processor.batch_decode(
-            y_hat_ids_padded, 
+            y_hat_ids_padded_fix, 
             skip_special_tokens=True
         )
         
         y_str: str | list[str] = self.processor.batch_decode(
-            y_ids_padded,
+            y_ids_padded_fix,
             skip_special_tokens=False
         )
 
@@ -150,32 +157,41 @@ class TrocrApl(Trocr_Interface):
 
         return cer
     
-    def add_label_padding(
+    def pad_label(
         self,
         label: torch.Tensor,
-        inplace=True
+        value: int
     ) -> torch.Tensor:
         
         if label.shape[-1] < self.max_target_length:
             pad_amount = self.max_target_length - label.shape[-1]
             # Pad on the right along the last dimension
-            label = F.pad(
+            _label = F.pad(
                 label, 
                 (0, pad_amount),
-                value=self.PAD_TOKEN_OVERWRITE
+                value=value
             )
+        return label
+    
+    def encode_label(
+        self,
+        label_string: str
+    ) -> torch.Tensor:
+        labels_tensor: torch.Tensor = torch.tensor(
+            self.tokeniser(
+                label_string, 
+                padding="max_length", 
+                max_length=self.max_target_length
+            ).input_ids
+        )
+        labels_tensor = self.pad_label(
+            labels_tensor, 
+            self.PAD_TOKEN_ID
+        )
+        mask: torch.Tensor = labels_tensor == self.PAD_TOKEN_ID
+        labels_tensor[mask] = self.PAD_TOKEN_OVERWRITE
         
-        out_label_tensor: torch.Tensor = label
-        
-        if not inplace:
-            out_label_tensor: torch.Tensor 
-            out_label_tensor = label.detach().clone()
-            
-        mask: torch.Tensor = out_label_tensor == self.PAD_TOKEN_OVERWRITE
-        out_label_tensor[mask] = self.PAD_TOKEN_ID
-        
-        return out_label_tensor
-        
+        return labels_tensor
     
     def decode_model_output(
         self,
@@ -183,13 +199,45 @@ class TrocrApl(Trocr_Interface):
     ) -> list[str]:
         
         _restored_label: torch.Tensor
-        _restored_label = self.add_label_padding(
+        _restored_label = self.pad_label(
             encoded_label,
-            inplace=False
+            self.PAD_TOKEN_OVERWRITE
         )
         
         if len(_restored_label.shape) == 1:
             _restored_label = _restored_label.unsqueeze(0)
+        
+        mask: torch.Tensor = _restored_label == self.PAD_TOKEN_OVERWRITE
+        _restored_label = torch.where(mask, self.PAD_TOKEN_ID, _restored_label)
+        
+        strings: list[str] = []
+        
+        for label_tensor in _restored_label:
+            label_str: str = self.processor.decode(
+                label_tensor, 
+                skip_special_tokens=True
+            )
+            strings.append(label_str)
+        
+        return strings
+   
+    
+    def __decode_model_output(
+        self,
+        encoded_label: torch.Tensor
+    ) -> list[str]:
+        
+        _restored_label: torch.Tensor
+        _restored_label = self.pad_label(
+            encoded_label,
+            self.PAD_TOKEN_OVERWRITE
+        )
+        
+        if len(_restored_label.shape) == 1:
+            _restored_label = _restored_label.unsqueeze(0)
+        
+        mask: torch.Tensor = _restored_label == self.PAD_TOKEN_OVERWRITE
+        _restored_label[mask] = self.PAD_TOKEN_ID
         
         strings: list[str] = []
         

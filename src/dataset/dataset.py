@@ -37,27 +37,19 @@ class HandwrittenTextDataset(Dataset):
         self.pad_token: int = self.processor.tokenizer.pad_token_id
     
         
-    def set_label_padding(
+    def pad_label_to_shape(
         self,
         label: torch.Tensor,
-        inplace=True    
+        value: int
     ) -> torch.Tensor:
 
         if label.shape[-1] < self.max_target_length:
             pad_amount = self.max_target_length - label.shape[-1]
             # Pad on the right along the last dimension
-            label = F.pad(label, (0, pad_amount), value=self.pad_token_overwrite)
-
-        out_label_tensor: torch.Tensor = label
-
-        if not inplace:
-            out_label_tensor: torch.Tensor 
-            out_label_tensor = label.detach().clone()
-
-        mask: torch.Tensor = out_label_tensor == self.pad_token_overwrite
-        out_label_tensor[mask] = self.pad_token
-
-        return out_label_tensor
+            return F.pad(label, (0, pad_amount), value=value)
+        return label
+    
+        
     
     def encode_label(
         self,
@@ -70,9 +62,12 @@ class HandwrittenTextDataset(Dataset):
                 max_length=self.max_target_length
             ).input_ids
         )
-        
-        mask: torch.Tensor = labels_tensor == self.pad_token_overwrite
-        labels_tensor[mask] = self.pad_token
+        labels_tensor = self.pad_label_to_shape(
+            labels_tensor, 
+            self.pad_token
+        )
+        mask: torch.Tensor = labels_tensor == self.pad_token
+        labels_tensor[mask] = self.pad_token_overwrite
         
         return labels_tensor
         
@@ -83,8 +78,13 @@ class HandwrittenTextDataset(Dataset):
         
         tokenised_label = tokenised_label.detach().clone()
         
-        mask: torch.Tensor = tokenised_label == self.pad_token
-        tokenised_label[mask] = self.pad_token_overwrite
+        tokenised_label = self.pad_label_to_shape(
+            tokenised_label,
+            self.pad_token_overwrite
+        )
+        
+        mask: torch.Tensor = tokenised_label == self.pad_token_overwrite
+        tokenised_label[mask] = self.pad_token
         
         label_str = self.processor.decode(
             tokenised_label, 
