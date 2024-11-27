@@ -34,7 +34,8 @@ class TrocrApl(Trocr_Interface):
         early_stopping: bool = True,
         no_repeat_ngram_size: int = 2,
         length_penalty: float = 2.0,
-        apl_tokeniser_path: str | None = None
+        apl_tokeniser_path: str | None = None,
+        model_checkpoint_path: str = "microsoft/trocr-base-stage1"
     ):
         super(TrocrApl, self).__init__()
 
@@ -43,7 +44,7 @@ class TrocrApl(Trocr_Interface):
         self.early_stopping: bool = early_stopping
         self.no_repeat_ngram_size: int = no_repeat_ngram_size
         self.length_penalty: float = length_penalty
-        
+        self.model_checkpoint_path: str = model_checkpoint_path
         self.tokeniser: PreTrainedTokenizerBase
         
         if self.apl_tokeniser_path is None:
@@ -73,7 +74,7 @@ class TrocrApl(Trocr_Interface):
         
         self.model: PreTrainedModel 
         self.model = VisionEncoderDecoderModel.from_pretrained(
-            "microsoft/trocr-base-stage1"
+            self.model_checkpoint_path
         )
         
         self.character_error_rate_metric: EvaluationModule = load("cer")

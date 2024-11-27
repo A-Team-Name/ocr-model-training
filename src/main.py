@@ -25,7 +25,7 @@ MAX_STRING_LENGTH: int = 128
 EARLY_STOPPING: bool = True
 BEAM_WIDTH: int = 5
 BATCH_SIZE: int = 4
-LENGTH_PENALTY: float = 1.0
+LENGTH_PENALTY: float = 2.0
 NO_REPEAT_NGRAM: int = 2
 
 
@@ -60,30 +60,22 @@ log_dirpath: str = os.path.join(
 )
 os.makedirs(log_dirpath, exist_ok=True)
 
-log_filepath: str = os.path.join(
-    log_dirpath,
-    "log.txt"
-)
-open(log_filepath, "w").close()
-
-
 
 def log(
     string: str,
-    max_length: int = 1000
+    filename: str = "log.txt",
+    max_length: int = 100000
 ) -> None:
     
-    with open(log_filepath, "r") as f:
-        lines: list[str] = f.readlines()
-        
-        lines = lines[-min(max_length, len(lines)):]
+    log_filepath: str = os.path.join(
+        log_dirpath,
+        filename
+    )
     
-    formatted_string: str = f"{datetime.datetime.now()} - {string}\n"
+    formatted_string: str = f"{datetime.datetime.now()}{CSV_SEPERATOR}{string}\n"
     
-    lines.append(formatted_string)
-    
-    with open(log_filepath, "w") as f:
-        f.write("".join(lines))
+    with open(log_filepath, "a") as f:
+        f.write(formatted_string)
 
 
 
@@ -92,7 +84,8 @@ def log(
 print("Loading Model")
 
 trocr_model: TrocrApl = TrocrApl(
-    max_target_length=128
+    max_target_length=128,
+    model_checkpoint_path=checkpoint_dirpath
     
 )
 
@@ -128,14 +121,13 @@ val_labels: list[str] = []
 train_filenames, val_filenames, train_labels, val_labels = train_test_split(
     filenames, 
     labels,
-    train_size=0.8
+    train_size=0.99
 )
 
 
 
 
 print("Loading Datasets")
-
 
 
 train_dataset: HandwrittenTextDataset = HandwrittenTextDataset(
@@ -164,6 +156,7 @@ val_dataloader: DataLoader = DataLoader(
     batch_size=BATCH_SIZE,
     shuffle=False
 )
+print(f"Dataset Split: Train: {len(train_dataset)} Val: {len(val_dataset)}")
 
 print("Defining Generation Config")
 
@@ -195,14 +188,18 @@ epoch: int
 for epoch in range(10000):
 
     train_loss: float = 0.0
+    train_cer: float = 0.0
     
-    image: torch.Tensor
-    encoded_label: torch.Tensor
-    for image, encoded_label in tqdm(
-        iterable=train_dataloader,
+    data: tuple[torch.Tensor, torch.Tensor]
+    
+    for i, data in tqdm(
+        iterable=enumerate(train_dataloader),
         desc="Training model...",
         total=len(train_dataset)//BATCH_SIZE
     ):
+        image: torch.Tensor
+        encoded_label: torch.Tensor
+        image, encoded_label = data
         
         image = image.to(DEVICE)
         encoded_label = encoded_label.to(DEVICE)
@@ -219,7 +216,10 @@ for epoch in range(10000):
             image,
             generation_config=gen_config
         )
-        
+        cer: float = trocr_model.compute_character_error_rate(
+            y_hat_ids=predicted_encoded_string, 
+            y_ids=encoded_label
+        )
         predicted_string: str = trocr_model.decode_model_output(
             predicted_encoded_string
         )
@@ -227,18 +227,21 @@ for epoch in range(10000):
             encoded_label
         )
         
-        print(f"Epoch{epoch}: Training: y:{y_string} y_hat{predicted_string}")
-        log(f"Epoch{epoch}: Training: y:{y_string} y_hat{predicted_string}")
-        
+        if i % 300 == 0:
+            print(f"Epoch{epoch}: Training: y:{y_string} y_hat{predicted_string}")
+            log(f"{epoch}{CSV_SEPERATOR}{y_string}{CSV_SEPERATOR}{predicted_string}", "predictions.txt")
+            
         loss: torch.Tensor = trocr_output.loss
         loss.backward()
         optimiser.step()
         optimiser.zero_grad()
 
         train_loss += loss.item()
+        train_cer += cer
         
     print(f"Epoch{epoch}: Training: Loss:", train_loss/len(train_dataloader))
-    log(f"Epoch{epoch}: Training: Loss: {train_loss/len(train_dataloader)}")
+    log(f"{epoch}{CSV_SEPERATOR}{train_loss/len(train_dataloader)}", "train_loss.txt")
+    log(f"{epoch}{CSV_SEPERATOR}{ train_cer / len(train_dataloader)}", "train_cer.txt")
     
     trocr_model.model = trocr_model.model.eval()
     
@@ -246,11 +249,16 @@ for epoch in range(10000):
     valid_cer: float = 0.0
     with torch.no_grad():
         
-        image: torch.Tensor
-        encoded_label: torch.Tensor        
-        for image, encoded_label in tqdm(
-            train_dataloader
+        data: tuple[torch.Tensor, torch.Tensor]       
+        for i, data in tqdm(
+            enumerate(val_dataloader),
+            "Validating",
+            len(val_dataloader)
         ):  
+            
+            image: torch.Tensor
+            encoded_label: torch.Tensor 
+            image, encoded_label = data
             
             image = image.to(device=DEVICE)
             encoded_label = encoded_label.to(device=DEVICE)
@@ -277,10 +285,10 @@ for epoch in range(10000):
             
             #plt.imshow(X.detach().cpu()[0, :, :, :].permute((1, 2, 0)))
             #plt.show()S
-            for y_, y_hat in zip(correct_output, predicted_output):
-                print(f"Epoch{epoch}: Validation: y: {y_} y_hat: {y_hat}")
-                log(f"Epoch{epoch}: Validation: y: {y_} y_hat: {y_hat}")
-                
+            if i % 300:
+                print(f"Epoch{epoch}: Validation: y: {correct_output} y_hat: {predicted_output}")
+                log(f"{epoch}{CSV_SEPERATOR}{y_}{CSV_SEPERATOR}{y_hat}", "val_predictions.txt")
+        
             cer: float = trocr_model.compute_character_error_rate(
                 y_hat_ids=encoded_string_prediction, 
                 y_ids=encoded_label
@@ -290,7 +298,7 @@ for epoch in range(10000):
             valid_cer += cer 
 
     print("Validation CER:", valid_cer / len(val_dataloader))
-    log(f"Epoch {epoch}: Validation CER: {valid_cer / len(val_dataloader)}")
+    log(f"{epoch}{CSV_SEPERATOR}{ valid_cer / len(val_dataloader)}", "val_cer.txt")
     log(f"Epoch {epoch}: Validation Loss: {val_loss / len(val_dataloader)}")    
-    
+    log(f"{epoch}{CSV_SEPERATOR}{val_loss / len(val_dataloader)}", "val_loss.txt")
     trocr_model.model.save_pretrained(checkpoint_dirpath)
