@@ -287,7 +287,7 @@ for epoch in range(10000):
             #plt.show()S
             if i % 300:
                 print(f"Epoch{epoch}: Validation: y: {correct_output} y_hat: {predicted_output}")
-                log(f"{epoch}{CSV_SEPERATOR}{y_}{CSV_SEPERATOR}{y_hat}", "val_predictions.txt")
+                log(f"{epoch}{CSV_SEPERATOR}{correct_output}{CSV_SEPERATOR}{predicted_output}", "val_predictions.txt")
         
             cer: float = trocr_model.compute_character_error_rate(
                 y_hat_ids=encoded_string_prediction, 
