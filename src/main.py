@@ -48,10 +48,8 @@ metadata_csv_filepath: str = os.path.join(
     dataset_dirpath,
     "metadata_apl_fix.csv"
 )
-checkpoint_dirpath: str = os.path.join(
-    root_dirpath,
-    "model_checkpoints"
-)
+checkpoint_dirpath: str = "microsoft/trocr-base-stage1"
+
 os.makedirs(checkpoint_dirpath, exist_ok=True)
 
 log_dirpath: str = os.path.join(
