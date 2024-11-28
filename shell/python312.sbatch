@@ -1,9 +1,9 @@
 #!/bin/bash
 #
 #SBATCH --job-name=LeonTraining # Job name for tracking
-#SBATCH --partition=gecko     # Partition you wish to use (see above for list)
+#SBATCH --partition=eagle     # Partition you wish to use (see above for list)
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16     # Number of CPU threads used by your job
+#SBATCH --cpus-per-task=4     # Number of CPU threads used by your job
 #SBATCH --gres=gpu:1           # Number of GPUs to use 
 #SBATCH --time=2-00:00:00      # Job time limit set to 2 days (48 hours)
 #
