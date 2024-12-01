@@ -1,7 +1,16 @@
 {
   "version": "1.0",
   "truncation": null,
-  "padding": null,
+  "padding": {
+    "strategy": {
+      "Fixed": 128
+    },
+    "direction": "Right",
+    "pad_to_multiple_of": null,
+    "pad_id": 1,
+    "pad_type_id": 0,
+    "pad_token": "<pad>"
+  },
   "added_tokens": [
     {
       "id": 0,

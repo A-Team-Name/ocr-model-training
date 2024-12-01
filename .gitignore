@@ -2,7 +2,6 @@
 
 dataset/
 model_checkpoints/
-logs/
 logs_storage/
 
 #model checkpoint

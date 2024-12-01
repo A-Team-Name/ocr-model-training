@@ -1,16 +1,16 @@
 {
-  "_name_or_path": "microsoft/trocr-base-stage1",
+  "_name_or_path": "/dcs/20/u2034788/Documents/Project/ocr-model-training/src/../models/trocr-apl",
   "architectures": [
     "VisionEncoderDecoderModel"
   ],
   "decoder": {
     "_attn_implementation_autoset": false,
     "_name_or_path": "",
-    "activation_dropout": 0.0,
+    "activation_dropout": 0.1,
     "activation_function": "relu",
     "add_cross_attention": true,
     "architectures": null,
-    "attention_dropout": 0.0,
+    "attention_dropout": 0.1,
     "bad_words_ids": null,
     "begin_suppress_tokens": null,
     "bos_token_id": 0,
@@ -91,7 +91,7 @@
     "_name_or_path": "",
     "add_cross_attention": false,
     "architectures": null,
-    "attention_probs_dropout_prob": 0.0,
+    "attention_probs_dropout_prob": 0.1,
     "bad_words_ids": null,
     "begin_suppress_tokens": null,
     "bos_token_id": null,
@@ -109,7 +109,7 @@
     "forced_bos_token_id": null,
     "forced_eos_token_id": null,
     "hidden_act": "gelu",
-    "hidden_dropout_prob": 0.0,
+    "hidden_dropout_prob": 0.1,
     "hidden_size": 768,
     "id2label": {
       "0": "LABEL_0",

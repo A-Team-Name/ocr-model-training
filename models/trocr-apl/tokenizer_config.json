@@ -610,6 +610,7 @@
   "mask_token": "<mask>",
   "model_max_length": 512,
   "pad_token": "<pad>",
+  "processor_class": "TrOCRProcessor",
   "sep_token": "</s>",
   "tokenizer_class": "RobertaTokenizer",
   "trim_offsets": true,
