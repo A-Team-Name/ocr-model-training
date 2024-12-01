@@ -1,0 +1,10 @@
+Defining Constants
+Defining Paths
+Loading Model
+Loading MetaData
+Splitting dataset
+Loading Datasets
+Dataset Split: Train: 50482 Val: 510
+Defining Generation Config
+Defining Optimiser
+Training Loop

@@ -35,7 +35,15 @@ class HandwrittenTextDataset(Dataset):
         self.max_target_length: int = max_target_length
         self.pad_token_overwrite: int = pad_token_overwrite
         self.pad_token: int = self.processor.tokenizer.pad_token_id
-    
+
+        
+        self._filecache: list[tuple[torch.Tensor, torch.Tensor] | None] 
+        self._filecache = [
+            None 
+            for _ in 
+            range(len(filenames))
+        ]
+        
         
     def pad_label_to_shape(
         self,
@@ -99,7 +107,13 @@ class HandwrittenTextDataset(Dataset):
         self,
         index: int
     ) -> tuple[torch.Tensor, torch.Tensor]:
-     
+
+        if self._filecache[index] is not None:
+            tensor1, tensor2 = self._filecache[index]
+            tensor1 = tensor1.detach().clone()
+            tensor2 = tensor2.detach().clone()
+            return tensor1, tensor2
+            
         # get file name + text 
         filepath: str = self.filepaths[index]
         text_label: str = self.label_strings[index]
@@ -113,6 +127,8 @@ class HandwrittenTextDataset(Dataset):
         labels_tensor: torch.Tensor = self.encode_label(
             text_label
         )
-
-        return text_image_tensor.squeeze(), labels_tensor
+        data: tuple[torch.Tensor, torch.Tensor] = (text_image_tensor.squeeze(), labels_tensor)
+        self._filecache[index] = data
+        
+        return data
         

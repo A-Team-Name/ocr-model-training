@@ -230,7 +230,7 @@ for epoch in range(10000):
         )
         
         if i % 300 == 0:
-            print(f"Epoch{epoch}: Training: y:{y_string} y_hat{predicted_string}")
+            #print(f"Epoch{epoch}: Training: y:{y_string} y_hat{predicted_string}")
             log(f"{epoch}{CSV_SEPERATOR}{y_string}{CSV_SEPERATOR}{predicted_string}", "predictions.txt")
             
         loss: torch.Tensor = trocr_output.loss
@@ -241,7 +241,7 @@ for epoch in range(10000):
         train_loss += loss.item()
         train_cer += cer
         
-    print(f"Epoch{epoch}: Training: Loss:", train_loss/len(train_dataloader))
+    #print(f"Epoch{epoch}: Training: Loss:", train_loss/len(train_dataloader))
     log(f"{epoch}{CSV_SEPERATOR}{train_loss/len(train_dataloader)}", "train_loss.txt")
     log(f"{epoch}{CSV_SEPERATOR}{ train_cer / len(train_dataloader)}", "train_cer.txt")
     
@@ -288,7 +288,7 @@ for epoch in range(10000):
             #plt.imshow(X.detach().cpu()[0, :, :, :].permute((1, 2, 0)))
             #plt.show()S
             if i % 300:
-                print(f"Epoch{epoch}: Validation: y: {correct_output} y_hat: {predicted_output}")
+                #print(f"Epoch{epoch}: Validation: y: {correct_output} y_hat: {predicted_output}")
                 log(f"{epoch}{CSV_SEPERATOR}{correct_output}{CSV_SEPERATOR}{predicted_output}", "val_predictions.txt")
         
             cer: float = trocr_model.compute_character_error_rate(
@@ -299,7 +299,7 @@ for epoch in range(10000):
             val_loss += loss.item()
             valid_cer += cer 
 
-    print("Validation CER:", valid_cer / len(val_dataloader))
+    #print("Validation CER:", valid_cer / len(val_dataloader))
     log(f"{epoch}{CSV_SEPERATOR}{ valid_cer / len(val_dataloader)}", "val_cer.txt")
     log(f"Epoch {epoch}: Validation Loss: {val_loss / len(val_dataloader)}")    
     log(f"{epoch}{CSV_SEPERATOR}{val_loss / len(val_dataloader)}", "val_loss.txt")
