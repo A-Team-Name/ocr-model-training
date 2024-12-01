@@ -27,7 +27,7 @@ BEAM_WIDTH: int = 5
 BATCH_SIZE: int = 4
 LENGTH_PENALTY: float = 2.0
 NO_REPEAT_NGRAM: int = 2
-
+START_EPOCH: int = 13
 
 
 print("Defining Paths")
@@ -48,9 +48,13 @@ metadata_csv_filepath: str = os.path.join(
     dataset_dirpath,
     "metadata_apl_fix.csv"
 )
-checkpoint_dirpath: str = "microsoft/trocr-base-stage1"
+checkpoint_dirpath: str = os.path.join(
+   root_dirpath,
+   "models",
+   "trocr-apl" 
+) #"microsoft/trocr-base-stage1"
 
-os.makedirs(checkpoint_dirpath, exist_ok=True)
+#os.makedirs(checkpoint_dirpath, exist_ok=True)
 
 log_dirpath: str = os.path.join(
     root_dirpath,
@@ -83,8 +87,8 @@ print("Loading Model")
 
 trocr_model: TrocrApl = TrocrApl(
     max_target_length=128,
-    model_checkpoint_path=checkpoint_dirpath
-    
+    model_checkpoint_path=checkpoint_dirpath,
+    apl_tokeniser_path=checkpoint_dirpath
 )
 
 
@@ -184,7 +188,7 @@ print("Training Loop")
 
 epoch: int
 for epoch in range(10000):
-
+    epoch = START_EPOCH + epoch
     train_loss: float = 0.0
     train_cer: float = 0.0
     
@@ -300,3 +304,4 @@ for epoch in range(10000):
     log(f"Epoch {epoch}: Validation Loss: {val_loss / len(val_dataloader)}")    
     log(f"{epoch}{CSV_SEPERATOR}{val_loss / len(val_dataloader)}", "val_loss.txt")
     trocr_model.model.save_pretrained(checkpoint_dirpath)
+    trocr_model.processor.save_pretrained(checkpoint_dirpath)

@@ -1,0 +1,22 @@
+Traceback (most recent call last):
+  File "/dcs/20/u2034788/Documents/Project/ocr-model-training/src/main.py", line 84, in <module>
+    trocr_model: TrocrApl = TrocrApl(
+                            ^^^^^^^^^
+  File "/dcs/20/u2034788/Documents/Project/ocr-model-training/src/models/trocr_apl.py", line 76, in __init__
+    self.model = VisionEncoderDecoderModel.from_pretrained(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/dcs/20/u2034788/.local/lib/python3.12/site-packages/transformers/models/vision_encoder_decoder/modeling_vision_encoder_decoder.py", line 376, in from_pretrained
+    return super().from_pretrained(pretrained_model_name_or_path, *model_args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/dcs/20/u2034788/.local/lib/python3.12/site-packages/transformers/modeling_utils.py", line 3613, in from_pretrained
+    config, model_kwargs = cls.config_class.from_pretrained(
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/dcs/20/u2034788/.local/lib/python3.12/site-packages/transformers/configuration_utils.py", line 552, in from_pretrained
+    return cls.from_dict(config_dict, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/dcs/20/u2034788/.local/lib/python3.12/site-packages/transformers/configuration_utils.py", line 718, in from_dict
+    config = cls(**config_dict)
+             ^^^^^^^^^^^^^^^^^^
+  File "/dcs/20/u2034788/.local/lib/python3.12/site-packages/transformers/models/vision_encoder_decoder/configuration_vision_encoder_decoder.py", line 86, in __init__
+    raise ValueError(
+ValueError: A configuraton of type vision-encoder-decoder cannot be instantiated because not both `encoder` and `decoder` sub-configurations are passed, but only {'attn_implementation': None}

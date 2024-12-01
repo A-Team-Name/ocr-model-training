@@ -35,7 +35,7 @@ class TrocrApl(Trocr_Interface):
         no_repeat_ngram_size: int = 2,
         length_penalty: float = 2.0,
         apl_tokeniser_path: str | None = None,
-        model_checkpoint_path: str = "microsoft/trocr-base-stage1"
+        model_checkpoint_path: str = "microsoft/trocr-large-stage1"
     ):
         super(TrocrApl, self).__init__()
 
@@ -59,11 +59,13 @@ class TrocrApl(Trocr_Interface):
         else:
             self.tokeniser: AutoTokenizer = AutoTokenizer.from_pretrained(
                 self.apl_tokeniser_path
-            )
-
+        )
+        
+        
+        
         _processor: tuple[TrOCRProcessor, dict[str, Any]] | TrOCRProcessor
         _processor = TrOCRProcessor.from_pretrained(
-            "microsoft/trocr-base-handwritten"
+            model_checkpoint_path,
         )
         
         if isinstance(_processor, tuple):
@@ -74,7 +76,7 @@ class TrocrApl(Trocr_Interface):
         
         self.model: PreTrainedModel 
         self.model = VisionEncoderDecoderModel.from_pretrained(
-            self.model_checkpoint_path
+            model_checkpoint_path
         )
         
         self.character_error_rate_metric: EvaluationModule = load("cer")

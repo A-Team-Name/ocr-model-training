@@ -1,0 +1,22 @@
+Traceback (most recent call last):
+  File "/dcs/20/u2034788/Documents/Project/ocr-model-training/src/main.py", line 88, in <module>
+    trocr_model: TrocrApl = TrocrApl(
+                            ^^^^^^^^^
+  File "/dcs/20/u2034788/Documents/Project/ocr-model-training/src/models/trocr_apl.py", line 67, in __init__
+    _processor = TrOCRProcessor.from_pretrained(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/dcs/20/u2034788/.local/lib/python3.12/site-packages/transformers/processing_utils.py", line 944, in from_pretrained
+    args = cls._get_arguments_from_pretrained(pretrained_model_name_or_path, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/dcs/20/u2034788/.local/lib/python3.12/site-packages/transformers/processing_utils.py", line 990, in _get_arguments_from_pretrained
+    args.append(attribute_class.from_pretrained(pretrained_model_name_or_path, **kwargs))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/dcs/20/u2034788/.local/lib/python3.12/site-packages/transformers/models/auto/image_processing_auto.py", line 415, in from_pretrained
+    config_dict, _ = ImageProcessingMixin.get_image_processor_dict(pretrained_model_name_or_path, **kwargs)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/dcs/20/u2034788/.local/lib/python3.12/site-packages/transformers/image_processing_base.py", line 335, in get_image_processor_dict
+    resolved_image_processor_file = cached_file(
+                                    ^^^^^^^^^^^^
+  File "/dcs/20/u2034788/.local/lib/python3.12/site-packages/transformers/utils/hub.py", line 374, in cached_file
+    raise EnvironmentError(
+OSError: /dcs/20/u2034788/Documents/Project/ocr-model-training/src/../models/trocr-apl does not appear to have a file named preprocessor_config.json. Checkout 'https://huggingface.co//dcs/20/u2034788/Documents/Project/ocr-model-training/src/../models/trocr-apl/tree/main' for available files.
