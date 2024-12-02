@@ -176,7 +176,8 @@ print("Defining Optimiser")
 
 optimiser: AdamW = AdamW(
     params=trocr_model.model.parameters(),
-    lr=5e-5
+    lr=5e-5,
+    weight_decay=0.02
 )
 
 
