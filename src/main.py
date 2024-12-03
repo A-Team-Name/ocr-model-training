@@ -24,10 +24,10 @@ CSV_SEPERATOR: str = "🫤"
 MAX_STRING_LENGTH: int = 128
 EARLY_STOPPING: bool = True
 BEAM_WIDTH: int = 5
-BATCH_SIZE: int = 4
+BATCH_SIZE: int = 2
 LENGTH_PENALTY: float = 2.0
 NO_REPEAT_NGRAM: int = 2
-START_EPOCH: int = 13
+START_EPOCH: int = 16
 
 
 print("Defining Paths")
@@ -91,6 +91,8 @@ trocr_model: TrocrApl = TrocrApl(
     apl_tokeniser_path=checkpoint_dirpath
 )
 
+for param in trocr_model.model.encoder.parameters():
+    param.requires_grad = False
 
 
 
@@ -177,7 +179,7 @@ print("Defining Optimiser")
 optimiser: AdamW = AdamW(
     params=trocr_model.model.parameters(),
     lr=5e-5,
-    weight_decay=0.02
+    weight_decay=0.01
 )
 
 

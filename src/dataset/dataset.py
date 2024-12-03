@@ -127,8 +127,6 @@ class HandwrittenTextDataset(Dataset):
         labels_tensor: torch.Tensor = self.encode_label(
             text_label
         )
-        data: tuple[torch.Tensor, torch.Tensor] = (text_image_tensor.squeeze(), labels_tensor)
-        #self._filecache[index] = data
+        return text_image_tensor.squeeze(), labels_tensor
         
-        return data
         
