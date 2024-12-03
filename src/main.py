@@ -48,11 +48,17 @@ metadata_csv_filepath: str = os.path.join(
     dataset_dirpath,
     "metadata_apl_fix.csv"
 )
-checkpoint_dirpath: str = os.path.join(
+load_checkpoint_dirpath: str = os.path.join(
    root_dirpath,
    "models",
-   "trocr-apl" 
-) #"microsoft/trocr-base-stage1"
+   "trocr" 
+)
+save_checkpoint_dirpath: str = os.path.join(
+   root_dirpath,
+   "models",
+   "trained_trocr" 
+) 
+#load_checkpoint_dirpath: str = "microsoft/trocr-base-stage1"
 
 #os.makedirs(checkpoint_dirpath, exist_ok=True)
 
@@ -85,14 +91,24 @@ def log(
 
 print("Loading Model")
 
+encoder_train_layers: list[str] = [
+    'encoder.pooler.dense.bias', 
+    'encoder.pooler.dense.weight'
+]
+
 trocr_model: TrocrApl = TrocrApl(
     max_target_length=128,
-    model_checkpoint_path=checkpoint_dirpath,
-    apl_tokeniser_path=checkpoint_dirpath
+    model_checkpoint_path=load_checkpoint_dirpath,
+    apl_tokeniser_path=load_checkpoint_dirpath
 )
 
-for param in trocr_model.model.encoder.parameters():
-    param.requires_grad = False
+trocr_model.model.save_pretrained(save_checkpoint_dirpath)
+trocr_model.processor.save_pretrained(save_checkpoint_dirpath)
+
+for name, param in trocr_model.model.named_parameters():
+    print(name)
+    if name.startswith("encoder") and not any(layer in name for layer in encoder_train_layers):
+        param.requires_grad = False
 
 
 
@@ -306,5 +322,5 @@ for epoch in range(10000):
     log(f"{epoch}{CSV_SEPERATOR}{ valid_cer / len(val_dataloader)}", "val_cer.txt")
     log(f"Epoch {epoch}: Validation Loss: {val_loss / len(val_dataloader)}")    
     log(f"{epoch}{CSV_SEPERATOR}{val_loss / len(val_dataloader)}", "val_loss.txt")
-    trocr_model.model.save_pretrained(checkpoint_dirpath)
-    trocr_model.processor.save_pretrained(checkpoint_dirpath)
+    trocr_model.model.save_pretrained(save_checkpoint_dirpath)
+    trocr_model.processor.save_pretrained(save_checkpoint_dirpath)
