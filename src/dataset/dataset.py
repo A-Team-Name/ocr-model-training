@@ -1,3 +1,4 @@
+import numpy as np
 from torch.utils.data import Dataset
 from transformers import TrOCRProcessor
 from transformers import VisionEncoderDecoderModel
@@ -7,6 +8,7 @@ from PIL import Image
 import os
 from torch.functional import F
 from torch.utils.data import Dataset
+from PIL import Image, ImageOps
 
 
 class HandwrittenTextDataset(Dataset):
@@ -17,11 +19,12 @@ class HandwrittenTextDataset(Dataset):
         label_strings: list[str],
         processor: TrOCRProcessor,
         max_target_length: int = 128,
-        pad_token_overwrite: int = -100
+        pad_token_overwrite: int = -100,
+        size: int = 384
     ):
         assert len(label_strings) == len(filenames)
         
-
+        self.size: int = size
         self.dataset_dirpath: str = dataset_dirpath
         self.filenames: list[str] = filenames
         self.filepaths: list[str] = [
@@ -102,31 +105,52 @@ class HandwrittenTextDataset(Dataset):
     
     def __len__(self) -> int:
         return len(self.filenames)
+    
 
-    def __getitem__(
-        self,
-        index: int
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-
-        #if self._filecache[index] is not None:
-        #    tensor1, tensor2 = self._filecache[index]
-        #    tensor1 = tensor1.detach().clone()
-        #    tensor2 = tensor2.detach().clone()
-        #    return tensor1, tensor2
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Get item from the dataset. Zooms the image so the x-axis matches self.size,
+        then pads the y-axis to self.size before feeding it into the processor.
+        
+        Args:
+            index (int): Index of the dataset item.
             
-        # get file name + text 
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: The processed image tensor and label tensor.
+        """
+        # Get file name and text
         filepath: str = self.filepaths[index]
         text_label: str = self.label_strings[index]
         
+        # Load the image
         text_image: Image.Image = Image.open(filepath).convert("RGB")
+        
+        # Get original dimensions
+        original_width, original_height = text_image.size
+        
+        # Compute zoom factor to resize the x-axis to self.size
+        target_width = self.size
+        zoom_factor = target_width / original_width
+        new_height = int(original_height * zoom_factor)
+        
+        # Resize the image to (self.size, new_height)
+        text_image = text_image.resize((target_width, new_height), Image.Resampling.LANCZOS)
+        
+        # Pad the y-axis to match self.size
+        if new_height < self.size:
+            total_padding = self.size - new_height
+            pad_top = total_padding // 2
+            pad_bottom = total_padding - pad_top
+            padding = (0, pad_top, 0, pad_bottom)  # (left, top, right, bottom)
+            text_image = ImageOps.expand(text_image, border=padding, fill=(0, 0, 0))  # Pad with black
+        
+        # Process the padded image
         text_image_tensor: torch.Tensor = self.processor(
             text_image, 
             return_tensors="pt"
-        ).pixel_values
+        ).pixel_values.squeeze(0)  # Remove batch dimension added by processor
         
-        labels_tensor: torch.Tensor = self.encode_label(
-            text_label
-        )
-        return text_image_tensor.squeeze(), labels_tensor
+        # Encode the label
+        labels_tensor: torch.Tensor = self.encode_label(text_label)
         
-        
+        return text_image_tensor, labels_tensor

@@ -168,7 +168,7 @@ val_dataset: HandwrittenTextDataset = HandwrittenTextDataset(
 train_dataloader: DataLoader = DataLoader(
     dataset=train_dataset,
     batch_size=BATCH_SIZE,
-    shuffle=True
+    shuffle=False
 )
 
 val_dataloader: DataLoader = DataLoader(
