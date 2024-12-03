@@ -1,0 +1,2 @@
+2024-12-03 14:10:44.547714🫤16🫤['decmon←{⎕SIGNAL 2}', 'flag←CheckDeprecatedFlag folder;filename;EndIf;cfg']🫤['decional SAVAL B', 'SARACKE COUPIGULAR FOR SURE DROMIC EFFECES']
+2024-12-03 14:14:20.713412🫤16🫤['⍝ min - minimum value', "(⊂body)F.NPUT src,'/Foo.apln'"]🫤["⍝ r←⎝�ms r'value", "(body←⍕⎝'⊃�''≆��⌕'∢≡'source,''a,'"]
