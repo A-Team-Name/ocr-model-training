@@ -11,6 +11,7 @@ class CharImageDataset(Dataset):
         self,
         file_paths: list[str],
         labels: list[str],
+        all_label_classes: list[str],
         rotation_limit: float,
         translation_limit: float,
         skew_limit: float,
@@ -33,16 +34,17 @@ class CharImageDataset(Dataset):
         assert len(file_paths) == len(labels), "file_paths and labels must have the same length."
 
         self.file_paths: list[str] = file_paths
-        self.labels: list[str] = sorted(set(labels))
+        self.labels: list[str] = labels
+        self.labels_set: list[str] = sorted(set(all_label_classes))
         self.label_to_index = {
-            label: idx
-            for idx, label in
-            enumerate(self.labels)
+            label: index
+            for index, label in
+            enumerate(self.labels_set)
         }
         self.index_to_label = {
-            idx: label
-            for label, idx in
-            self.label_to_index.items()
+            index: label
+            for index, label in
+            enumerate(self.labels)
         }
 
         self.rotation_limit = rotation_limit
@@ -51,6 +53,7 @@ class CharImageDataset(Dataset):
         self.zoom_change = zoom_change
         self.threshold = threshold
         self.image_dims = image_dims
+        self.all_label_classes = all_label_classes
 
         self.random = random.Random(seed)
 
@@ -91,7 +94,7 @@ class CharImageDataset(Dataset):
 
         # One-hot encode the label
         one_hot_label = torch.zeros(
-            len(self.labels),
+            len(self.labels_set),
             dtype=torch.float32
         )
         one_hot_label[label] = 1.0

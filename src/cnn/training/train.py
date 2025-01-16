@@ -363,18 +363,20 @@ def grid_search(
 
                     loss_window.pop(0)
 
-                val_log: LogPoint
-                for val_log in tqdm(
-                    iterable=evaluate(
-                        model=model,
-                        criterion=criterion,
-                        eval_dataloader=val_dataloader,
-                        device=device
-                    ),
-                    desc="Validating Model...",
-                    total=len(val_dataloader)
-                ):
-                    epoch_val_logs.append(val_log)
+                if val_dataloader is not None:
+
+                    val_log: LogPoint
+                    for val_log in tqdm(
+                        iterable=evaluate(
+                            model=model,
+                            criterion=criterion,
+                            eval_dataloader=val_dataloader,
+                            device=device
+                        ),
+                        desc="Validating Model...",
+                        total=len(val_dataloader)
+                    ):
+                        epoch_val_logs.append(val_log)
 
                 yield EpochLogs(
                     model=model,
