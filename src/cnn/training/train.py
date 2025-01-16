@@ -283,7 +283,7 @@ def train(
 
 
 def grid_search(
-    model_factor: Type[nn.Module],
+    model_factory: Type[nn.Module],
     all_model_parameters: list[dict[str, Any]],
     optim_factory: Type[optim.Optimizer],
     all_optim_params: list[dict[str, Any]],
@@ -307,7 +307,7 @@ def grid_search(
         model_parameters: dict[str, Any]
         for model_parameters in all_model_parameters:
 
-            model: nn.Module = model_factor(
+            model: nn.Module = model_factory(
                 **model_parameters
             )
             model = model.train()
