@@ -4,6 +4,7 @@ from torchvision.io import read_image
 from torchvision.transforms import functional as F
 from einops import rearrange, reduce
 import random
+from torchvision.transforms import GaussianBlur
 
 
 class CharImageDataset(Dataset):
@@ -16,8 +17,10 @@ class CharImageDataset(Dataset):
         translation_limit: float,
         skew_limit: float,
         zoom_change: float,
+        min_zoom: float,
         image_dims: tuple[int, int],
         threshold: float = 0.5,
+        thicken_sigma: float = 1.0,
         seed: int = 42
     ) -> None:
         """
@@ -51,8 +54,10 @@ class CharImageDataset(Dataset):
         self.translation_limit = translation_limit
         self.skew_limit = skew_limit
         self.zoom_change = zoom_change
+        self.min_zoom = min_zoom
         self.threshold = threshold
         self.image_dims = image_dims
+        self.thicken_sigma = thicken_sigma
         self.all_label_classes = all_label_classes
 
         self.random = random.Random(seed)
@@ -155,24 +160,54 @@ class CharImageDataset(Dataset):
         )
 
         image_shape: tuple[int, ...] = image.shape
+
         zoom_scale = self.random.uniform(
-            1.0-self.zoom_change,
-            1.0+self.zoom_change
+            max(self.min_zoom, 1.0-self.zoom_change),
+            max(self.min_zoom, 1.0+self.zoom_change)
         )
         zoom_height = int(image.shape[1] * zoom_scale)
         zoom_width = int(image.shape[2] * zoom_scale)
+
         image = F.resize(
             image,
             (zoom_height, zoom_width),
             antialias=True
         )
-        image = F.center_crop(image, image_shape[-2:])
+        image = F.center_crop(
+            image,
+            image_shape[-2:]
+        )
 
         image = F.resize(
             image,
             self.image_dims,
             antialias=True
         )
+
+        # do thicken/thinning here
+
+        # Apply thickening or thinning using Gaussian blur with conv2d
+        thicken_thinning_sigma: float = self.random.uniform(
+            -self.thicken_sigma,
+            self.thicken_sigma
+        )
+        if thicken_thinning_sigma != 0.0:
+            # Determine kernel size based on sigma (make it at least 3 and odd)
+            kernel_size = max(
+                3,
+                int(2 * round(3 * abs(thicken_thinning_sigma)) + 1)
+            )
+            kernel_size += (kernel_size % 2 == 0)  # Ensure kernel size is odd
+
+            # Apply GaussianBlur
+            gaussian_blur = GaussianBlur(
+                kernel_size=kernel_size,
+                sigma=(
+                    abs(thicken_thinning_sigma),
+                    abs(thicken_thinning_sigma)
+                )
+            )
+            image = gaussian_blur(image)
 
         image = torch.where(
             image > self.threshold,
