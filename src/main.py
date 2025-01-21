@@ -13,7 +13,7 @@ from tqdm import tqdm
 import datetime
 
 from models.trocr_apl import TrocrApl
-from dataset.dataset import HandwrittenTextDataset
+from dataset.trocr_dataset import HandwrittenTextDataset
 
 
 
