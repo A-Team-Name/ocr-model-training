@@ -4,7 +4,7 @@ from torch import float32 as torch_float32
 from torch import where as torch_where
 from torch import isnan as torch_isnan
 from torch import zeros_like as torch_zeros_like
-from torch import Tensor
+from torch import Tensor, tensor
 from torch.cuda import is_available as cuda_is_available
 from torch.nn import LeakyReLU
 from torch.nn import BatchNorm2d
@@ -17,9 +17,10 @@ from torch.nn import Conv2d
 from torch.nn import Dropout2d, Dropout
 from torch.nn import ModuleList
 from torch.nn import Tanhshrink
-
+from torch import stack
 from torch import load as torch_load
 import torch.functional as F
+from torch.nn.functional import softmax
 from torchinfo import summary
 from typing import Any, Callable, Tuple, Type
 from numpy import ceil, prod
@@ -536,3 +537,51 @@ LeakyGrad{self.leaky_gradient}"
                 device=self.device
             )
         )
+        
+
+class AllCNN2D_Prod(AllCNN2D):
+    
+    def __init__(
+        self, 
+        labels_map: list[str], 
+        **kwargs
+    ):
+        self.labels_map: list[str] = labels_map
+        super(AllCNN2D_Prod, self).__init__(**kwargs)  # Correctly call the parent class's __init__
+
+        
+        
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        # Call the parent class's forward method to get logits
+        logits: Tensor = super(AllCNN2D_Prod, self).forward(x)  # Use super to call the parent class's forward method
+        softmaxed: Tensor = softmax(logits, dim=-1)  # Use dim instead of axis for PyTorch
+
+        softmaxed_ordered_stack: list[Tensor] = [] 
+        softmaxed_char: Tensor
+        for batch_i in range(softmaxed.shape[0]):
+            softmaxed_char = softmaxed[batch_i, :]
+            softmaxed_char_list: list = [
+                (i, pred, ord(char))
+                for i, pred, char in 
+                zip(
+                    range(softmaxed_char.shape[0]),
+                    softmaxed_char.tolist(),
+                    self.labels_map
+                )
+            ]
+            softmaxed_char_list = sorted(
+                softmaxed_char_list,
+                key=lambda e: e[1], # prob
+                reverse=True
+            )
+            
+            softmaxed_ordered_stack.append(softmaxed_char_list)
+            
+        softmax_ordered: Tensor = tensor(
+            softmaxed_ordered_stack
+        ) 
+        
+        return logits, softmaxed, softmax_ordered
+        
+        
+    
