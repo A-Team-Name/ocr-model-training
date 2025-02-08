@@ -5,6 +5,10 @@ from torchvision.transforms import functional as F
 from einops import rearrange, reduce
 import random
 from torchvision.transforms import GaussianBlur
+import torch
+import torch.nn.functional as torch_func
+from torchvision.transforms.functional import rotate, affine, resize, center_crop
+from torchvision.transforms import GaussianBlur
 
 
 class CharImageDataset(Dataset):
@@ -21,7 +25,8 @@ class CharImageDataset(Dataset):
         image_dims: tuple[int, int],
         threshold: float = 0.5,
         thicken_sigma: float = 1.0,
-        seed: int = 42
+        seed: int = 42,
+        pad: int = 1
     ) -> None:
         """
         Initialize the dataset.
@@ -50,6 +55,7 @@ class CharImageDataset(Dataset):
             enumerate(self.labels)
         }
 
+        self.pad = pad
         self.rotation_limit = rotation_limit
         self.translation_limit = translation_limit
         self.skew_limit = skew_limit
@@ -119,22 +125,23 @@ class CharImageDataset(Dataset):
         Returns:
             torch.Tensor: The transformed image tensor.
         """
+        # Pad the image to prevent cropping during transformations
+        pad_size = int(max(image.shape[1], image.shape[2]) * 0.5)  # Adjust padding size as needed
+        image = torch_func.pad(image, (pad_size, pad_size, pad_size, pad_size), mode='constant', value=0.0)
+
         # Random rotation
         rotation_angle = self.random.uniform(
-            -self.rotation_limit*365,
-            self.rotation_limit*365
+            -self.rotation_limit * 365,
+            self.rotation_limit * 365
         )
-        image = F.rotate(
-            image,
-            rotation_angle
-        )
+        image = rotate(image, rotation_angle)
 
         # Random translation
         max_dx = self.translation_limit * image.shape[2]
         max_dy = self.translation_limit * image.shape[1]
         dx = self.random.uniform(-max_dx, max_dx)
         dy = self.random.uniform(-max_dy, max_dy)
-        image = F.affine(
+        image = affine(
             image,
             angle=0,
             translate=(int(dx), int(dy)),
@@ -144,14 +151,14 @@ class CharImageDataset(Dataset):
 
         # Random skew (shear)
         shear_x = self.random.uniform(
-            -self.skew_limit*image.shape[2],
-            self.skew_limit*image.shape[2]
+            -self.skew_limit * image.shape[2],
+            self.skew_limit * image.shape[2]
         )
         shear_y = self.random.uniform(
-            -self.skew_limit*image.shape[1],
-            self.skew_limit*image.shape[1]
+            -self.skew_limit * image.shape[1],
+            self.skew_limit * image.shape[1]
         )
-        image = F.affine(
+        image = affine(
             image,
             angle=0,
             translate=(0, 0),
@@ -159,32 +166,16 @@ class CharImageDataset(Dataset):
             shear=(shear_x, shear_y)
         )
 
-        image_shape: tuple[int, ...] = image.shape
-
+        # Random zoom
         zoom_scale = self.random.uniform(
-            max(self.min_zoom, 1.0-self.zoom_change),
-            max(self.min_zoom, 1.0+self.zoom_change)
+            max(self.min_zoom, 1.0 - self.zoom_change),
+            max(self.min_zoom, 1.0 + self.zoom_change)
         )
         zoom_height = int(image.shape[1] * zoom_scale)
         zoom_width = int(image.shape[2] * zoom_scale)
 
-        image = F.resize(
-            image,
-            (zoom_height, zoom_width),
-            antialias=True
-        )
-        image = F.center_crop(
-            image,
-            image_shape[-2:]
-        )
-
-        image = F.resize(
-            image,
-            self.image_dims,
-            antialias=True
-        )
-
-        # do thicken/thinning here
+        image = resize(image, (zoom_height, zoom_width), antialias=True)
+        image = center_crop(image, (image.shape[1], image.shape[2]))
 
         # Apply thickening or thinning using Gaussian blur with conv2d
         thicken_thinning_sigma: float = self.random.uniform(
@@ -209,10 +200,49 @@ class CharImageDataset(Dataset):
             )
             image = gaussian_blur(image)
 
+            # Adjust for thickening or thinning
+            if thicken_thinning_sigma > 0:
+                # Thickening: Increase the character's size by lowering the threshold
+                image = torch.where(
+                    image > (self.threshold - thicken_thinning_sigma * 0.1),
+                    torch.tensor(1.0),
+                    torch.tensor(0.0)
+                )
+            else:
+                # Thinning: Decrease the character's size by raising the threshold
+                image = torch.where(
+                    image > (self.threshold + abs(thicken_thinning_sigma) * 0.1),
+                    torch.tensor(1.0),
+                    torch.tensor(0.0)
+                )
+
+        # Threshold the image
         image = torch.where(
             image > self.threshold,
             torch.tensor(1.0),
             torch.tensor(0.0)
+        )
+
+        # Crop the image around the black pixels (foreground)
+        mask = image > 0.5  # Assuming foreground is black (0) and background is white (1)
+        coords = torch.nonzero(mask)
+        if coords.shape[0] > 0:
+            x_min, y_min = coords.min(dim=0)[0][1:].tolist()
+            x_max, y_max = coords.max(dim=0)[0][1:].tolist()
+            image = image[:, x_min:x_max + 1, y_min:y_max + 1]
+        else:
+            # If no black pixels are found, return the original image
+            pass
+
+        # Resize to the desired dimensions
+        image: torch.Tensor = resize(image, [d - self.pad*2 for d in self.image_dims], antialias=True)
+        image = (image > self.threshold).type(torch.uint8).type(torch.float32)
+
+        image = torch_func.pad(
+            image,
+            (self.pad, self.pad, self.pad, self.pad),
+            mode='constant',
+            value=0.0
         )
 
         return image

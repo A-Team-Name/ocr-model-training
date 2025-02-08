@@ -11,4 +11,17 @@ all_model_parameters: list[dict[str, Any]] = [
     }
 ]
 
+
+Krud:
+{
+        "conv_features": (1, 16, 32, 32, 32, 32),
+        "fully_connected_features": (64, 44),
+        "expected_input_size": (64, 64),
+        "device": "cuda",
+        "conv_dropout": 0.075,
+        "verbose": True,
+        "name_prefix": MODEL_NAME,
+        "checkpoint_path": LOAD_CHECKPOINT
+    }
+
 ['(', ')', '+', '-', '.', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'λ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '×', '÷']

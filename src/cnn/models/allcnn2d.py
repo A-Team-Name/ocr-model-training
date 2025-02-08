@@ -272,10 +272,17 @@ class AllCNN2D(Module):
         """
         checkpoint: dict[str, Tensor]
         with open(checkpoint_path, "rb") as checkpoint_file:
-            checkpoint = torch_load(
-                checkpoint_file,
-                weights_only=True
-            )
+            try:
+                checkpoint = torch_load(
+                    checkpoint_file,
+                    weights_only=True,
+                    map_location='cpu'
+                )
+            except Exception:
+                checkpoint = torch_load(
+                    checkpoint_file,
+                    weights_only=False
+                )
 
         # Get the model's state_dict
         model_state_dict: dict[str, Tensor] = self.state_dict()
@@ -537,32 +544,30 @@ LeakyGrad{self.leaky_gradient}"
                 device=self.device
             )
         )
-        
+
 
 class AllCNN2D_Prod(AllCNN2D):
-    
+
     def __init__(
-        self, 
-        labels_map: list[str], 
+        self,
+        labels_map: list[str],
         **kwargs
     ):
         self.labels_map: list[str] = labels_map
         super(AllCNN2D_Prod, self).__init__(**kwargs)  # Correctly call the parent class's __init__
 
-        
-        
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         # Call the parent class's forward method to get logits
         logits: Tensor = super(AllCNN2D_Prod, self).forward(x)  # Use super to call the parent class's forward method
         softmaxed: Tensor = softmax(logits, dim=-1)  # Use dim instead of axis for PyTorch
 
-        softmaxed_ordered_stack: list[Tensor] = [] 
+        softmaxed_ordered_stack: list[Tensor] = []
         softmaxed_char: Tensor
         for batch_i in range(softmaxed.shape[0]):
             softmaxed_char = softmaxed[batch_i, :]
             softmaxed_char_list: list = [
                 (i, pred, ord(char))
-                for i, pred, char in 
+                for i, pred, char in
                 zip(
                     range(softmaxed_char.shape[0]),
                     softmaxed_char.tolist(),
@@ -571,17 +576,14 @@ class AllCNN2D_Prod(AllCNN2D):
             ]
             softmaxed_char_list = sorted(
                 softmaxed_char_list,
-                key=lambda e: e[1], # prob
+                key=lambda e: e[1],  # prob
                 reverse=True
             )
-            
+
             softmaxed_ordered_stack.append(softmaxed_char_list)
-            
+
         softmax_ordered: Tensor = tensor(
             softmaxed_ordered_stack
-        ) 
-        
+        )
+
         return logits, softmaxed, softmax_ordered
-        
-        
-    

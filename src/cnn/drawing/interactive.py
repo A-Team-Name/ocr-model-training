@@ -10,8 +10,8 @@ class DrawingApp:
         self.root.title("Draw Image")
 
         # Create a 64x64 pixel canvas to draw on
-        self.canvas_width = 64
-        self.canvas_height = 64
+        self.canvas_width = 300
+        self.canvas_height = 300
         self.canvas = tk.Canvas(root, width=self.canvas_width, height=self.canvas_height, bg="white")
         self.canvas.pack()
 
@@ -21,7 +21,7 @@ class DrawingApp:
 
         # Current position to draw
         self.last_x, self.last_y = None, None
-        self.pen_thickness = 3  # pen thickness
+        self.pen_thickness = 10  # pen thickness
 
         # Bind mouse events for drawing
         self.canvas.bind("<B1-Motion>", self.draw_on_canvas)
