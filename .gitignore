@@ -1,12 +1,15 @@
 # Dataset
 
-dataset/
+data/
 model_checkpoints/
 logs_storage/
 
 #model checkpoint
 *.safetensors
+*.pkl
 
+#logging
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
