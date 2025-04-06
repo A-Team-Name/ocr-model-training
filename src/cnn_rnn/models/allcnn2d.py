@@ -1,4 +1,6 @@
 import os
+from torch.nn import init as torch_init
+from torch import zeros as torch_zeros
 from torch import dtype as torch_dtype
 from torch import float32 as torch_float32
 from torch import where as torch_where
@@ -17,6 +19,7 @@ from torch.nn import Conv2d
 from torch.nn import Dropout2d, Dropout
 from torch.nn import ModuleList
 from torch.nn import Tanhshrink
+from torch.nn import Parameter
 from torch import stack
 from torch import load as torch_load
 import torch.functional as F
@@ -25,6 +28,7 @@ from torchinfo import summary
 from typing import Any, Callable, Tuple, Type
 from numpy import ceil, prod
 from datetime import datetime
+import math
 
 
 class LambdaBlock(Module):
@@ -41,6 +45,37 @@ class LambdaBlock(Module):
         X: Tensor
     ) -> Tensor:
         return self.func(X)
+
+
+class LoRALinearWrapper(Module):
+    def __init__(
+        self,
+        original: Linear,
+        rank: int = 0,
+        alpha: float = 1.0,
+    ):
+        super().__init__()
+        self.original = original
+        self.rank = rank
+        self.alpha = alpha
+        self.scaling = alpha / rank if rank > 0 else 0.0
+
+        if rank > 0:
+            self.lora_A = Parameter(torch_zeros((rank, original.in_features)))
+            self.lora_B = Parameter(torch_zeros((original.out_features, rank)))
+            # Small init so it's effectively identity at the start
+            torch_init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+            torch_init.zeros_(self.lora_B)
+        else:
+            self.lora_A = None
+            self.lora_B = None
+
+    def forward(self, x):
+        out = self.original(x)
+        if self.rank > 0:
+            lora_out = (x @ self.lora_A.T) @ self.lora_B.T
+            out = out + self.scaling * lora_out
+        return out
 
 
 class AllCNN2D(Module):
@@ -61,7 +96,10 @@ class AllCNN2D(Module):
         frozen_layer_prefixes: list[str] = [],
         conv_latent_activation_factory: Callable[[], Module] | None = None,
         fc_activation_factory: Callable[[], Module] | None = None,
-        verbose=True
+        verbose: bool = True,
+        use_lora: bool = False,
+        lora_rank: int = 0,
+        lora_alpha: float = 1.0,
     ):
         super(AllCNN2D, self).__init__()
 
@@ -131,6 +169,9 @@ class AllCNN2D(Module):
         self.expected_conv_shapes = [expected_input_size]
         self.verbose: bool = verbose
         self.frozen_layer_prefixes: list[str] = frozen_layer_prefixes
+        self.use_lora: bool = use_lora
+        self.lora_rank: int = lora_rank
+        self.lora_alpha: float = lora_alpha
 
         in_feature: int
         out_feature: int
@@ -397,19 +438,12 @@ LeakyGrad{self.leaky_gradient}"
         Args:
             in_features (int)
             out_features (int)
-            include_activation (bool, optional): Defaults to True.
+            activation_factory (Callable, optional)
+            include_activation (bool, optional)
 
         Returns:
             Sequential
         """
-        if not include_activation:
-            return Sequential(
-                Linear(
-                    in_features=in_features,
-                    out_features=out_features
-                ),
-            )
-
         if activation_factory is None:
             def activation_factory():
                 return LeakyReLU(
@@ -417,16 +451,28 @@ LeakyGrad{self.leaky_gradient}"
                     self.leaky_inplace
                 )
 
-        return Sequential(
-
-            Linear(
+        # Decide whether to use LoRA
+        if self.use_lora:
+            rank = self.lora_rank
+            alpha = self.lora_alpha
+            linear_layer = LoRALinearWrapper(
+                original=Linear(in_features, out_features),
+                rank=rank,
+                alpha=alpha,
+            )
+        else:
+            linear_layer = Linear(
                 in_features=in_features,
                 out_features=out_features
-            ),
-            Dropout(
-                self.fully_connected_dropout
-            ),
-            activation_factory(),
+            )
+
+        if not include_activation:
+            return Sequential(linear_layer)
+
+        return Sequential(
+            linear_layer,
+            Dropout(self.fully_connected_dropout),
+            activation_factory()
         )
 
     def forward(
