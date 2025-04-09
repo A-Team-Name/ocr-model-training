@@ -3,6 +3,7 @@ import torch.nn as nn
 from .allcnn2d import AllCNN2D
 from torch.nn import RNN, LSTM, GRU
 
+
 class CNNRNNModel(nn.Module):
     def __init__(
         self,
@@ -15,7 +16,7 @@ class CNNRNNModel(nn.Module):
         device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
     ):
         super(CNNRNNModel, self).__init__()
-        
+
         self.cnn_encoder = cnn_encoder
         self.rnn_type = rnn_type.lower()
         self.rnn_hidden_size = rnn_hidden_size
@@ -84,8 +85,3 @@ class CNNRNNModel(nn.Module):
         output = self.fc(rnn_output)  # Shape: (batch_size, seq_len, num_classes)
 
         return output
-
-# Example usage:
-# Assuming you have a trained CNN encoder `cnn_encoder`
-# cnn_encoder = AllCNN2D(...)
-# cnn_rnn_model = CNNRNNModel(cnn_encoder=cnn_encoder, rnn_type='lstm', rnn_hidden_size=128, rnn_num_layers=2, num_classes=22)
