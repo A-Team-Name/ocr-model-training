@@ -7,7 +7,10 @@ logs_storage/
 #model checkpoint
 *.safetensors
 *.pkl
-
+*.pt
+*.onnx
+*.zip
+*.png
 #logging
 *.csv
 

@@ -47,34 +47,153 @@ class LambdaBlock(Module):
         return self.func(X)
 
 
+class LoRAConv2DWrapper(Module):
+    def __init__(
+        self,
+        original: Conv2d,
+        freeze_original: bool = True,
+        device: str | None = None
+    ):
+        super().__init__()
+
+        self.device = device or ("cuda" if cuda_is_available() else "cpu")
+        self.original = original.to(self.device)
+
+        self.lora_adapters: dict[str, dict[str, Module]] = {}
+        self.active_scalings: dict[str, float] = {}
+        self._all_scalings: dict[str, float] = {}
+
+        for param in self.original.parameters():
+            param.requires_grad = not freeze_original
+
+    def add_lora(
+        self,
+        name: str,
+        rank: int = 4,
+        alpha: float = 1.0
+    ):
+        in_channels = self.original.in_channels
+        out_channels = self.original.out_channels
+        stride = self.original.stride
+        padding = self.original.padding
+        dilation = self.original.dilation
+
+        A_conv = Conv2d(
+            in_channels, rank,
+            kernel_size=1,
+            stride=1,
+            padding=0,
+            bias=False
+        ).to(self.device)
+
+        B_conv = Conv2d(
+            rank, out_channels,
+            kernel_size=1,
+            stride=stride,
+            padding=0,  # ✅ Padding should be zero since kernel_size=1
+            bias=False
+        )
+
+        torch_init.kaiming_uniform_(A_conv.weight, a=math.sqrt(5))
+        torch_init.kaiming_uniform_(B_conv.weight, a=math.sqrt(5))
+
+        self.lora_adapters[name] = {"A": A_conv, "B": B_conv}
+        self.active_scalings[name] = alpha / rank
+        self._all_scalings[name] = alpha / rank
+
+        self.add_module(f"{name}_conv2d_lora_A", A_conv)
+        self.add_module(f"{name}_conv2d_lora_B", B_conv)
+
+    def set_active_lora(self, name: str):
+        for key in self.active_scalings:
+            self.active_scalings[key] = 0.0
+        if name in self._all_scalings:
+            self.active_scalings[name] = self._all_scalings[name]
+
+    def set_lora_scaling(self, name: str, scaling: float):
+        if name in self.active_scalings:
+            self.active_scalings[name] = scaling
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x.to(self.device)
+        out = self.original(x)
+        for name, adapter in self.lora_adapters.items():
+            scaling = self.active_scalings.get(name, 0.0)
+            if scaling > 0.0:
+                A = adapter["A"]
+                B = adapter["B"]
+                lora_out = B(A(x))  # mimic LoRA residual path
+                out = out + scaling * lora_out
+        return out
+
+
 class LoRALinearWrapper(Module):
     def __init__(
         self,
         original: Linear,
-        rank: int = 0,
-        alpha: float = 1.0,
+        freeze_original: bool = True,
+        device: str | None = None
     ):
+
         super().__init__()
-        self.original = original
-        self.rank = rank
-        self.alpha = alpha
-        self.scaling = alpha / rank if rank > 0 else 0.0
 
-        if rank > 0:
-            self.lora_A = Parameter(torch_zeros((rank, original.in_features)))
-            self.lora_B = Parameter(torch_zeros((original.out_features, rank)))
-            # Small init so it's effectively identity at the start
-            torch_init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-            torch_init.zeros_(self.lora_B)
+        if device is None:
+            self.device = "cuda" if cuda_is_available() else "cpu"
         else:
-            self.lora_A = None
-            self.lora_B = None
+            self.device = device
 
-    def forward(self, x):
+        self.original = original.to(device=device)
+        self.lora_adapters: dict[str, dict[str, Parameter]] = {}  # name → {"A": A, "B": B}
+        self.active_scalings: dict[str, float] = {}  # name → scaling
+        self._all_scalings: dict[str, float] = {}
+
+        for param in self.original.parameters():
+            param.requires_grad = not freeze_original
+
+    def add_lora(
+        self,
+        name: str,
+        A: Parameter | None = None,
+        B: Parameter | None = None,
+        rank: int = 4,
+        alpha: float = 1.0
+    ):
+        if A is None or B is None:
+            A = Parameter(torch_zeros((rank, self.original.in_features), device=self.device))
+            B = Parameter(torch_zeros((self.original.out_features, rank), device=self.device))
+            torch_init.kaiming_uniform_(A, a=math.sqrt(5))
+            torch_init.kaiming_uniform_(B, a=math.sqrt(5))
+        else:
+            A = A.to(self.device)
+            B = B.to(self.device)
+
+        self.lora_adapters[name] = {"A": A, "B": B}
+        self.active_scalings[name] = alpha / rank
+        self._all_scalings[name] = alpha / rank
+
+        # Register with PyTorch so they're tracked
+        self.register_parameter(f"{name}_linear_lora_A", A)
+        self.register_parameter(f"{name}_linear_lora_B", B)
+
+    def set_active_lora(self, name: str):
+        for key in self.active_scalings:
+            self.active_scalings[key] = 0.0
+        if name in self.lora_adapters:
+            self.active_scalings[name] = self._all_scalings[name]
+
+    def set_lora_scaling(self, name: str, scaling: float):
+        if name in self.active_scalings:
+            self.active_scalings[name] = scaling
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x.to(self.device)
         out = self.original(x)
-        if self.rank > 0:
-            lora_out = (x @ self.lora_A.T) @ self.lora_B.T
-            out = out + self.scaling * lora_out
+        for name, adapter in self.lora_adapters.items():
+            A = adapter["A"]
+            B = adapter["B"]
+            scaling = self.active_scalings.get(name, 0.0)
+            if scaling != 0.0:
+                out = out + scaling * ((x @ A.T) @ B.T)
         return out
 
 
@@ -98,8 +217,10 @@ class AllCNN2D(Module):
         fc_activation_factory: Callable[[], Module] | None = None,
         verbose: bool = True,
         use_lora: bool = False,
-        lora_rank: int = 0,
-        lora_alpha: float = 1.0,
+        lora_configs: list[dict] = [],  # {"rank": ..., "name": ..., "alpha": ..., "path": ...}
+        default_lora_name: str = "DEFAULT",
+        default_lora_rank: int = 1,
+        default_lora_alpha: float = 1.0
     ):
         super(AllCNN2D, self).__init__()
 
@@ -170,8 +291,10 @@ class AllCNN2D(Module):
         self.verbose: bool = verbose
         self.frozen_layer_prefixes: list[str] = frozen_layer_prefixes
         self.use_lora: bool = use_lora
-        self.lora_rank: int = lora_rank
-        self.lora_alpha: float = lora_alpha
+        self.lora_configs: list[dict] = lora_configs
+        self.default_lora_name: str = default_lora_name
+        self.default_lora_rank: int = default_lora_rank
+        self.default_lora_alpha: float = default_lora_alpha
 
         in_feature: int
         out_feature: int
@@ -244,7 +367,8 @@ class AllCNN2D(Module):
                 checkpoint_path,
                 verbose=self.verbose
             )
-
+        else:
+            print(f"Checkpoint not found {checkpoint_path}")
         self = self.to(
             device=self.device,
             dtype=dtype
@@ -254,15 +378,42 @@ class AllCNN2D(Module):
             self.freeze_layers(prefix)
 
         if verbose:
-            print(
-                str(
-                    summary(
-                        self,
-                        (1, *expected_input_size),
-                        device=device
-                    )
-                )
-            )
+            print(str(summary(
+                self,
+                (1, *expected_input_size),
+                device=device
+            )))
+
+        if self.use_lora:
+            for block in self.fully_connected_blocks:
+                for module in block:
+                    if isinstance(module, LoRALinearWrapper):
+                        for lora_cfg in lora_configs:
+                            name = lora_cfg["name"]
+                            rank = lora_cfg.get("rank", self.default_lora_rank)
+                            alpha = lora_cfg.get("alpha", self.default_lora_alpha)
+                            module.add_lora(
+                                name=name,
+                                rank=rank,
+                                alpha=alpha
+                            )
+
+                            if "path" in lora_cfg:
+                                state_dict = torch_load(
+                                    lora_cfg["path"],
+                                    map_location="cpu"
+                                )
+                                own_keys = {
+                                    k: v
+                                    for k, v in state_dict.items()
+                                    if name in k
+                                }
+                                module.load_state_dict(
+                                    own_keys,
+                                    strict=False
+                                )
+
+                        module.set_active_lora(self.default_lora_name)
 
     def freeze_layers(
         self,
@@ -388,41 +539,52 @@ LeakyGrad{self.leaky_gradient}"
     ) -> Sequential:
 
         if out_activation_factory is None:
-            def out_activation_factory(): return LeakyReLU(
-                self.leaky_gradient,
-                inplace=self.leaky_inplace
-            )
+            def out_activation_factory():
+                return LeakyReLU(
+                    self.leaky_gradient,
+                    inplace=self.leaky_inplace
+                )
+
+        # Create first conv
+        conv1 = Conv2d(
+            in_channels=in_features,
+            out_channels=out_features,
+            kernel_size=3,
+            padding=1
+        )
+        # Create second conv
+        conv2 = Conv2d(
+            in_channels=out_features,
+            out_channels=out_features,
+            kernel_size=3,
+            stride=2,
+            padding=1
+        )
+
+        # Wrap with LoRA if enabled
+        if self.use_lora:
+            conv1 = LoRAConv2DWrapper(conv1, device=self.device)
+            conv2 = LoRAConv2DWrapper(conv2, device=self.device)
+
+            for cfg in self.lora_configs:
+                name = cfg["name"]
+                rank = cfg.get("rank", self.default_lora_rank)
+                alpha = cfg.get("alpha", self.default_lora_alpha)
+
+                conv1.add_lora(name, rank=rank, alpha=alpha)
+                conv2.add_lora(name, rank=rank, alpha=alpha)
+
+            conv1.set_active_lora(self.default_lora_name)
+            conv2.set_active_lora(self.default_lora_name)
 
         return Sequential(
-            Conv2d(
-                in_channels=in_features,
-                out_channels=out_features,
-                kernel_size=3,
-                padding=1
-            ),
-            Dropout2d(
-                self.conv_dropout
-            ),
-            BatchNorm2d(
-                out_features
-            ),
-            LeakyReLU(
-                self.leaky_gradient,
-                inplace=self.leaky_inplace
-            ),
-            Conv2d(
-                in_channels=out_features,
-                out_channels=out_features,
-                kernel_size=3,
-                stride=2,
-                padding=1
-            ),
-            Dropout2d(
-                self.conv_dropout
-            ),
-            BatchNorm2d(
-                out_features
-            ),
+            conv1,
+            Dropout2d(self.conv_dropout),
+            BatchNorm2d(out_features),
+            LeakyReLU(self.leaky_gradient, inplace=self.leaky_inplace),
+            conv2,
+            Dropout2d(self.conv_dropout),
+            BatchNorm2d(out_features),
             out_activation_factory()
         )
 
@@ -433,17 +595,6 @@ LeakyGrad{self.leaky_gradient}"
         activation_factory: Callable[[], Module] | None = None,
         include_activation: bool = True
     ) -> Sequential:
-        """Creates a fully connected block as a `Sequential` module.
-
-        Args:
-            in_features (int)
-            out_features (int)
-            activation_factory (Callable, optional)
-            include_activation (bool, optional)
-
-        Returns:
-            Sequential
-        """
         if activation_factory is None:
             def activation_factory():
                 return LeakyReLU(
@@ -451,15 +602,30 @@ LeakyGrad{self.leaky_gradient}"
                     self.leaky_inplace
                 )
 
-        # Decide whether to use LoRA
         if self.use_lora:
-            rank = self.lora_rank
-            alpha = self.lora_alpha
+            linear = Linear(in_features, out_features)
             linear_layer = LoRALinearWrapper(
-                original=Linear(in_features, out_features),
-                rank=rank,
-                alpha=alpha,
+                original=linear,
+                device=self.device
             )
+
+            # Add all LoRA configs
+            for lora_cfg in self.lora_configs:
+                name = lora_cfg["name"]
+                rank = lora_cfg.get("rank", self.default_lora_rank)
+                alpha = lora_cfg.get("alpha", self.default_lora_alpha)
+                linear_layer.add_lora(name=name, rank=rank, alpha=alpha)
+
+                if "path" in lora_cfg:
+                    state_dict = torch_load(lora_cfg["path"], map_location="cpu")
+                    own_keys = {
+                        k: v for k, v in state_dict.items()
+                        if f"{name}_lora_" in k
+                    }
+                    linear_layer.load_state_dict(own_keys, strict=False)
+
+            linear_layer.set_active_lora(self.default_lora_name)
+
         else:
             linear_layer = Linear(
                 in_features=in_features,

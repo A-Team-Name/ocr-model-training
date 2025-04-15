@@ -46,7 +46,14 @@ class CharImageDataset(Dataset):
 
         self.file_paths: list[str] = file_paths
         self.labels: list[str] = labels
-        self.labels_set: list[str] = sorted(set(all_label_classes))
+        _labels_set = set([])
+        self.labels_set: list[str] = []
+
+        for label in all_label_classes:
+            if label not in _labels_set:
+                _labels_set.add(label)
+                self.labels_set.append(label)
+
         self.label_to_index = {
             label: index
             for index, label in
@@ -98,6 +105,9 @@ class CharImageDataset(Dataset):
         image = read_image(
             file_path
         ).float() / 255.0  # Normalize to [0, 1]
+
+        if image[0, 0, 0] > 0.001:
+            image = 1.0 - image
 
         image = reduce(image, "c h w -> 1 h w", "max")
 

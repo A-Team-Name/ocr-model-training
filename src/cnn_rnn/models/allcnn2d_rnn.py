@@ -71,9 +71,15 @@ class CNNRNNModel(nn.Module):
 
         # Pass each frame in the sequence through the CNN encoder
         X = X.view(batch_size * seq_len, channels, height, width)
-        cnn_output: torch.Tensor = self.cnn_encoder(X)
-        cnn_output = cnn_output.view(batch_size, seq_len, -1)  # Reshape back to (batch_size, seq_len, cnn_output_size)
 
+        conv_block: torch.nn.Module
+        for conv_block in self.cnn_encoder.encoder_conv_blocks:
+            X = conv_block(X)
+
+        X = self.cnn_encoder.conv_flatten_layer(X)
+
+        cnn_output = X.view(batch_size, seq_len, -1)  # Reshape back to (batch_size, seq_len, cnn_output_size)
+        print(cnn_output.shape)  # batch, seq, 256
         # Pass the CNN output through the RNN
         if self.rnn_type == 'lstm':
             rnn_output, (hidden, cell) = self.rnn(cnn_output)
