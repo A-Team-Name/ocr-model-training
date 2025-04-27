@@ -13,45 +13,52 @@ import torch.nn.functional as torch_func
 from torchvision.transforms.functional import rotate, affine, resize, center_crop
 from torchvision.transforms import GaussianBlur
 
-class WordImageDataset(Dataset):
+
+class CharImageDataset(Dataset):
     def __init__(
         self,
-        words: List[str],
-        file_paths: List[str],
-        labels: List[str],
-        all_label_classes: List[str],
+        file_paths: list[str],
+        labels: list[str],
+        all_label_classes: list[str],
         rotation_limit: float,
         translation_limit: float,
         skew_limit: float,
         zoom_change: float,
         min_zoom: float,
-        image_dims: Tuple[int, int],
+        image_dims: tuple[int, int],
         threshold: float = 0.5,
         thicken_sigma: float = 1.0,
         seed: int = 42,
         pad: int = 1
     ) -> None:
         """
-        Initialize the dataset for word sequences.
+        Initialize the dataset.
 
         Args:
-            words (List[str]): List of words (strings) to generate sequences from.
-            file_paths (List[str]): List of image file paths for individual characters.
-            labels (List[str]): List of character labels corresponding to `file_paths`.
-            all_label_classes (List[str]): All possible character classes.
+            file_paths (list[str]): list of image file paths.
+            labels (list[str]): list of string labels corresponding to the file paths.
             rotation_limit (float): Maximum rotation angle in degrees.
             translation_limit (float): Maximum translation fraction (0-1).
             skew_limit (float): Maximum skew angle in degrees.
-            zoom_change (float): Zoom variation range (e.g., 0.2 for ±20%).
-            min_zoom (float): Minimum allowed zoom scale.
-            image_dims (Tuple[int, int]): Target image dimensions (height, width).
-            threshold (float): Binarization threshold. Defaults to 0.5.
-            thicken_sigma (float): Sigma for thickening/thinning. Defaults to 1.0.
-            seed (int): Random seed for reproducibility. Defaults to 42.
-            pad (int): Padding size around the image. Defaults to 1.
+            seed (int): Random seed for transformations. Defaults to 42.
         """
-        self.words = words
-        self.all_label_classes = all_label_classes
+        assert len(file_paths) == len(labels), "file_paths and labels must have the same length."
+
+        self.file_paths: list[str] = file_paths
+        self.labels: list[str] = labels
+        self.labels_set: list[str] = sorted(set(all_label_classes))
+        self.label_to_index = {
+            label: index
+            for index, label in
+            enumerate(self.labels_set)
+        }
+        self.index_to_label = {
+            index: label
+            for index, label in
+            enumerate(self.labels)
+        }
+
+        self.pad = pad
         self.rotation_limit = rotation_limit
         self.translation_limit = translation_limit
         self.skew_limit = skew_limit
@@ -60,72 +67,66 @@ class WordImageDataset(Dataset):
         self.threshold = threshold
         self.image_dims = image_dims
         self.thicken_sigma = thicken_sigma
-        self.pad = pad
-        self.seed = seed
+        self.all_label_classes = all_label_classes
 
-        # Build mapping from character to list of image paths
-        self.char_to_paths = defaultdict(list)
-        for path, label in zip(file_paths, labels):
-            self.char_to_paths[label].append(path)
-
-        # Validate that all characters in words exist in the dataset
-        for word in self.words:
-            for char in word:
-                assert char in self.char_to_paths, f"Character '{char}' not found in the dataset."
-
-        # Label-to-index mapping
-        self.label_to_index = {char: idx for idx, char in enumerate(all_label_classes)}
         self.random = random.Random(seed)
 
     def __len__(self) -> int:
-        return len(self.words)
+        return len(self.file_paths)
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(
+        self,
+        index: int
+    ) -> tuple[
+        torch.Tensor,
+        torch.Tensor
+    ]:
         """
-        Retrieve a sequence of character images and their one-hot encoded labels for a word.
+        Retrieve an image and its corresponding one-hot encoded label.
 
         Args:
-            index (int): Index of the word to retrieve.
+            index (int): Index of the item to retrieve.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]: 
-                - Transformed image tensor of shape (sequence_length, 1, H, W)
-                - One-hot encoded labels of shape (sequence_length, num_classes)
+            Tuple[torch.Tensor, torch.Tensor]: A tuple containing the 
+                transformed image tensor and one-hot encoded label tensor.
         """
-        word = self.words[index]
-        sequence_images = []
-        sequence_labels = []
+        file_path = self.file_paths[index]
+        label = self.label_to_index[self.index_to_label[index]]
 
-        # For each character in the word, load and transform an image
-        for char in word:
-            # Randomly select an image path for this character
-            char_paths = self.char_to_paths[char]
-            selected_path = self.random.choice(char_paths)
+        # Load and preprocess image
+        image = read_image(
+            file_path
+        ).float() / 255.0  # Normalize to [0, 1]
 
-            # Load and preprocess image
-            image = read_image(selected_path).float() / 255.0  # Normalize to [0, 1]
-            image = reduce(image, "c h w -> 1 h w", "max")  # Convert to grayscale
+        image = reduce(image, "c h w -> 1 h w", "max")
 
-            # Apply random transformations
-            image = self._apply_random_transformations(image)
+        # Apply random transformations
+        image = self._apply_random_transformations(
+            image
+        )
 
-            # Append to sequence
-            sequence_images.append(image)
-            
-            # One-hot encode the label
-            one_hot = torch.zeros(len(self.all_label_classes), dtype=torch.float32)
-            one_hot[self.label_to_index[char]] = 1.0
-            sequence_labels.append(one_hot)
+        # One-hot encode the label
+        one_hot_label = torch.zeros(
+            len(self.labels_set),
+            dtype=torch.float32
+        )
+        one_hot_label[label] = 1.0
 
-        # Stack images and labels into tensors
-        image_sequence = torch.stack(sequence_images, dim=0)  # (seq_len, 1, H, W)
-        label_sequence = torch.stack(sequence_labels, dim=0)  # (seq_len, num_classes)
+        return image, one_hot_label
 
-        return image_sequence, label_sequence
-
-    def _apply_random_transformations(self, image: torch.Tensor) -> torch.Tensor:
+    def _apply_random_transformations(
+        self,
+        image: torch.Tensor
+    ) -> torch.Tensor:
         """
-        Apply random transformations to a single character image (same as original).
+        Apply random transformations to the image.
+
+        Args:
+            image (torch.Tensor): The input image tensor.
+
+        Returns:
+            torch.Tensor: The transformed image tensor.
         """
         # Pad the image to prevent cropping during transformations
         pad_size = int(max(image.shape[1], image.shape[2]) * 0.5)  # Adjust padding size as needed
@@ -249,5 +250,20 @@ class WordImageDataset(Dataset):
 
         return image
 
-    def get_label_mapping(self) -> dict:
+    def get_label_mapping(self) -> dict[str, int]:
+        """
+        Retrieve the label-to-index mapping.
+
+        Returns:
+            dict[str, int]: A dictionary mapping labels to their indices.
+        """
         return self.label_to_index
+
+    def get_index_mapping(self) -> dict[int, str]:
+        """
+        Retrieve the index-to-label mapping.
+
+        Returns:
+            dict[int, str]: A dictionary mapping indices to their labels.
+        """
+        return self.index_to_label

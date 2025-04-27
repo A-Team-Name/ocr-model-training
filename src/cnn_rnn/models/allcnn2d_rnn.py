@@ -3,6 +3,7 @@ import torch.nn as nn
 from .allcnn2d import AllCNN2D
 from torch.nn import RNN, LSTM, GRU
 
+
 class CNNRNNModel(nn.Module):
     def __init__(
         self,
@@ -15,7 +16,7 @@ class CNNRNNModel(nn.Module):
         device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
     ):
         super(CNNRNNModel, self).__init__()
-        
+
         self.cnn_encoder = cnn_encoder
         self.rnn_type = rnn_type.lower()
         self.rnn_hidden_size = rnn_hidden_size
@@ -70,9 +71,15 @@ class CNNRNNModel(nn.Module):
 
         # Pass each frame in the sequence through the CNN encoder
         X = X.view(batch_size * seq_len, channels, height, width)
-        cnn_output: torch.Tensor = self.cnn_encoder(X)
-        cnn_output = cnn_output.view(batch_size, seq_len, -1)  # Reshape back to (batch_size, seq_len, cnn_output_size)
 
+        conv_block: torch.nn.Module
+        for conv_block in self.cnn_encoder.encoder_conv_blocks:
+            X = conv_block(X)
+
+        X = self.cnn_encoder.conv_flatten_layer(X)
+
+        cnn_output = X.view(batch_size, seq_len, -1)  # Reshape back to (batch_size, seq_len, cnn_output_size)
+        print(cnn_output.shape)  # batch, seq, 256
         # Pass the CNN output through the RNN
         if self.rnn_type == 'lstm':
             rnn_output, (hidden, cell) = self.rnn(cnn_output)
@@ -84,8 +91,3 @@ class CNNRNNModel(nn.Module):
         output = self.fc(rnn_output)  # Shape: (batch_size, seq_len, num_classes)
 
         return output
-
-# Example usage:
-# Assuming you have a trained CNN encoder `cnn_encoder`
-# cnn_encoder = AllCNN2D(...)
-# cnn_rnn_model = CNNRNNModel(cnn_encoder=cnn_encoder, rnn_type='lstm', rnn_hidden_size=128, rnn_num_layers=2, num_classes=22)
