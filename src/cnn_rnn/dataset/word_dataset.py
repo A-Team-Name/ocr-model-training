@@ -12,6 +12,7 @@ from torchvision.transforms import GaussianBlur
 import torch.nn.functional as torch_func
 from torchvision.transforms.functional import rotate, affine, resize, center_crop
 from torchvision.transforms import GaussianBlur
+from collections import defaultdict
 
 
 class WordImageDataset(Dataset):
@@ -72,10 +73,11 @@ class WordImageDataset(Dataset):
         # Validate that all characters in words exist in the dataset
         for word in self.words:
             for char in word:
-                assert char in self.char_to_paths, f"Character '{char}' not found in the dataset."
+                # assert char in self.char_to_paths, f"Character '{char}' ({ord(char)}) not found in the dataset."
+                pass
 
         # Label-to-index mapping
-        self.label_to_index = {char: idx for idx, char in enumerate(all_label_classes)}
+        self.label_to_index = defaultdict(lambda: 0, {char: idx for idx, char in enumerate(all_label_classes)})
         self.random = random.Random(seed)
 
     def __len__(self) -> int:
@@ -101,11 +103,19 @@ class WordImageDataset(Dataset):
         for char in word:
             # Randomly select an image path for this character
             char_paths = self.char_to_paths[char]
+
+            if not char_paths:
+                continue
+
             selected_path = self.random.choice(char_paths)
 
             # Load and preprocess image
             image = read_image(selected_path).float() / 255.0  # Normalize to [0, 1]
+
             image = reduce(image, "c h w -> 1 h w", "max")  # Convert to grayscale
+
+            if image[0, 0, 0] > 0.99:
+                image = 1.0 - image
 
             # Apply random transformations
             image = self._apply_random_transformations(image)

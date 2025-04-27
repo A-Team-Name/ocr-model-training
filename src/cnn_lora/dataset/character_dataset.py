@@ -12,6 +12,8 @@ from torchvision.transforms import GaussianBlur
 import torch.nn.functional as torch_func
 from torchvision.transforms.functional import rotate, affine, resize, center_crop
 from torchvision.transforms import GaussianBlur
+import numpy.typing as npt
+import numpy as np
 
 
 class CharImageDataset(Dataset):
@@ -78,6 +80,36 @@ class CharImageDataset(Dataset):
 
         self.random = random.Random(seed)
 
+        _images: list[npt.NDArray[np.float32]] = []
+        _labels: list[npt.NDArray[np.float32]] = []
+
+        for i, file_path in enumerate(self.file_paths):
+            file_path = self.file_paths[i]
+            label = self.label_to_index[self.index_to_label[i]]
+
+            # Load and preprocess image
+            image = read_image(
+                file_path
+            ).float() / 255.0  # Normalize to [0, 1]
+
+            if image[0, 0, 0] > 0.001:
+                image = 1.0 - image
+
+            image = reduce(image, "c h w -> 1 h w", "max")
+
+            # One-hot encode the label
+            one_hot_label = torch.zeros(
+                len(self.labels_set),
+                dtype=torch.float32
+            )
+            one_hot_label[label] = 1.0
+
+            _images.append(image)
+            _labels.append(one_hot_label)
+
+        self.dataset_images: list[npt.NDArray[np.float32]] = _images
+        self.dataset_labels: list[npt.NDArray[np.float32]] = _labels
+
     def __len__(self) -> int:
         return len(self.file_paths)
 
@@ -98,30 +130,12 @@ class CharImageDataset(Dataset):
             Tuple[torch.Tensor, torch.Tensor]: A tuple containing the 
                 transformed image tensor and one-hot encoded label tensor.
         """
-        file_path = self.file_paths[index]
-        label = self.label_to_index[self.index_to_label[index]]
+        image: npt.NDArray[np.float32] = self.dataset_images[index]
+        one_hot_label: npt.NDArray[np.float32] = self.dataset_labels[index]
 
-        # Load and preprocess image
-        image = read_image(
-            file_path
-        ).float() / 255.0  # Normalize to [0, 1]
-
-        if image[0, 0, 0] > 0.001:
-            image = 1.0 - image
-
-        image = reduce(image, "c h w -> 1 h w", "max")
-
-        # Apply random transformations
         image = self._apply_random_transformations(
             image
         )
-
-        # One-hot encode the label
-        one_hot_label = torch.zeros(
-            len(self.labels_set),
-            dtype=torch.float32
-        )
-        one_hot_label[label] = 1.0
 
         return image, one_hot_label
 
